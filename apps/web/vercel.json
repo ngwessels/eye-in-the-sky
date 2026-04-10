@@ -1,4 +1,6 @@
 {
+  "installCommand": "cd ../.. && npm ci",
+  "buildCommand": "cd ../.. && npm run build",
   "crons": [
     {
       "path": "/api/cron/orchestrator",

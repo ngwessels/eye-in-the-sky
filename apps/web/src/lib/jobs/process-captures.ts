@@ -22,7 +22,7 @@ export async function processPendingCaptures(): Promise<number> {
   for (const c of list) {
     try {
       const url = await presignGet(c.s3Key);
-      const { output, model } = await runSkyImageAnalysis(url);
+      const { output, model } = await runSkyImageAnalysis(url, { view: c.view });
       await db.collection<CaptureDoc>("captures").updateOne(
         { captureId: c.captureId },
         {

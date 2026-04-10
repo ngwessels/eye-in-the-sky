@@ -89,10 +89,13 @@ async function handleCommand(cmd: Command) {
       }
       case "capture_now":
         if (config.mockCamera) {
+          const pose = panTilt.getPose();
           await uploadMockCapture({
             trace_id: cmd.trace_id,
             command_id: cmd.commandId,
             kind: "science",
+            mount_pan_deg: pose.pan,
+            mount_tilt_deg: pose.tilt,
           });
         }
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });

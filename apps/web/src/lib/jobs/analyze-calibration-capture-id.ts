@@ -18,7 +18,9 @@ export async function analyzeCalibrationCaptureById(
 
   try {
     const url = await presignGet(c.s3Key);
-    const { output, model } = await runCalibrationFrameValidation(url);
+    const { output, model } = await runCalibrationFrameValidation(url, {
+      view: c.view,
+    });
     await db.collection<CaptureDoc>("captures").updateOne(
       { captureId },
       {

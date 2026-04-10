@@ -5,6 +5,9 @@ export async function uploadMockCapture(opts: {
   trace_id?: string;
   command_id?: string;
   kind?: "science" | "calibration";
+  /** Mount pan/tilt in degrees at shutter time; server applies north_offset for true azimuth. */
+  mount_pan_deg?: number;
+  mount_tilt_deg?: number;
 }): Promise<{ captureId: string; s3Key: string }> {
   const presignRes = await stationFetch("/api/stations/me/captures", {
     method: "POST",
@@ -45,6 +48,8 @@ export async function uploadMockCapture(opts: {
       command_id: opts.command_id,
       kind: opts.kind ?? "science",
       contentType: "image/jpeg",
+      ...(opts.mount_pan_deg != null ? { mount_pan_deg: opts.mount_pan_deg } : {}),
+      ...(opts.mount_tilt_deg != null ? { mount_tilt_deg: opts.mount_tilt_deg } : {}),
     }),
   });
   if (!fin.ok) {

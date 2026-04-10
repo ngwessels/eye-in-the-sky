@@ -17,7 +17,7 @@ export async function analyzeCaptureById(captureId: string): Promise<void> {
 
   try {
     const url = await presignGet(c.s3Key);
-    const { output, model } = await runSkyImageAnalysis(url);
+    const { output, model } = await runSkyImageAnalysis(url, { view: c.view });
     const analysis_id = uuidv4();
     await db.collection<CaptureDoc>("captures").updateOne(
       { captureId },

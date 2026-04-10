@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getStationFromAuth } from "@/lib/auth";
 import { getDb } from "@/lib/mongodb";
 import { recomputeQualityTier } from "@/lib/tier";
-import type { StationDoc } from "@/lib/types";
+import type { CaptureDoc, StationDoc } from "@/lib/types";
 import { presignGet } from "@/lib/s3";
 import { runCalibrationFrameValidation } from "@/lib/calibration-analysis";
 import { getEnv } from "@/lib/env";
@@ -29,15 +29,27 @@ export async function POST(request: Request) {
   }
 
   const env = getEnv();
+  const db = await getDb();
   let conf = parsed.data.confidence;
   const methods = [...parsed.data.method];
   let serverValidation: Record<string, unknown> | null = null;
 
   const firstKey = parsed.data.calibration_s3_keys?.[0];
+  let viewFromCapture: CaptureDoc["view"] | undefined;
+  if (firstKey) {
+    const cap = await db.collection<CaptureDoc>("captures").findOne({
+      stationId: station.stationId,
+      s3Key: firstKey,
+    });
+    viewFromCapture = cap?.view;
+  }
+
   if (firstKey && env.AI_GATEWAY_API_KEY) {
     try {
       const url = await presignGet(firstKey);
-      const { output, model } = await runCalibrationFrameValidation(url);
+      const { output, model } = await runCalibrationFrameValidation(url, {
+        view: viewFromCapture,
+      });
       serverValidation = { ...output, model };
       conf = Math.min(conf, output.calibration_consistency_score);
       if (!output.horizon_plausible) {
@@ -52,7 +64,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const db = await getDb();
   const now = new Date();
   const nextCal: StationDoc["calibration"] = {
     ...station.calibration,

@@ -5,7 +5,8 @@ import { getDb } from "@/lib/mongodb";
 import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
 import { getEnv } from "@/lib/env";
 import { presignPut, resolveCaptureObjectKey } from "@/lib/s3";
-import type { CaptureDoc, StationDoc } from "@/lib/types";
+import type { CaptureDoc, CaptureViewDoc, StationDoc } from "@/lib/types";
+import { azimuthToCardinal16, normalizeAzimuthDeg } from "@eye/shared";
 import { z } from "zod";
 import { analyzeCaptureById } from "@/lib/jobs/analyze-capture-id";
 import { analyzeCalibrationCaptureById } from "@/lib/jobs/analyze-calibration-capture-id";
@@ -30,7 +31,57 @@ const finalizeBody = z.object({
   kind: z.enum(["science", "calibration"]),
   sha256: z.string().optional(),
   contentType: z.string(),
+  /** True-north azimuth in degrees (clockwise); if set, north_offset is not applied. */
+  azimuth_true_deg: z.number().finite().optional(),
+  elevation_deg: z.number().finite().optional(),
+  /** Mount pan in degrees; combined with station calibration.north_offset_deg for true azimuth. */
+  mount_pan_deg: z.number().finite().optional(),
+  mount_tilt_deg: z.number().finite().optional(),
 });
+
+/**
+ * True azimuth = mount pan + north_offset_deg (offset is how far mount "zero" is east of true north).
+ */
+function resolveCaptureView(
+  station: StationDoc,
+  d: {
+    azimuth_true_deg?: number;
+    elevation_deg?: number;
+    mount_pan_deg?: number;
+    mount_tilt_deg?: number;
+  },
+): CaptureViewDoc | undefined {
+  const fin = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+
+  if (fin(d.azimuth_true_deg)) {
+    const az = normalizeAzimuthDeg(d.azimuth_true_deg);
+    const view: CaptureViewDoc = {
+      azimuth_true_deg: az,
+      cardinal16: azimuthToCardinal16(az),
+      source: "edge_finalize",
+    };
+    if (fin(d.elevation_deg)) view.elevation_deg = d.elevation_deg;
+    return view;
+  }
+
+  if (fin(d.mount_pan_deg)) {
+    const offset = station.calibration?.north_offset_deg ?? 0;
+    const az = normalizeAzimuthDeg(d.mount_pan_deg + offset);
+    const view: CaptureViewDoc = {
+      azimuth_true_deg: az,
+      cardinal16: azimuthToCardinal16(az),
+      source: "edge_finalize",
+    };
+    if (fin(d.elevation_deg)) {
+      view.elevation_deg = d.elevation_deg;
+    } else if (fin(d.mount_tilt_deg)) {
+      view.elevation_deg = d.mount_tilt_deg;
+    }
+    return view;
+  }
+
+  return undefined;
+}
 
 function extForCt(ct: string): string {
   if (ct.includes("jpeg")) return "jpg";
@@ -135,6 +186,8 @@ export async function POST(request: Request) {
       updatedStation?.sequence ??
       (station.sequence ?? 0) + 1;
 
+    const view = resolveCaptureView(station, d);
+
     const doc: CaptureDoc = {
       captureId: d.captureId,
       stationId: station.stationId,
@@ -154,6 +207,7 @@ export async function POST(request: Request) {
       followups_enqueued: 0,
       sequence: seq,
       clock_untrusted: captureClockUntrusted,
+      ...(view ? { view } : {}),
     };
 
     await db.collection<CaptureDoc>("captures").insertOne(doc);

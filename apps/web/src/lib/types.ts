@@ -1,5 +1,15 @@
 import type { QualityTier } from "@eye/shared";
 
+export type CaptureViewSource = "edge_finalize" | "inferred";
+
+/** Camera boresight relative to true north (clockwise), persisted at ingest. */
+export interface CaptureViewDoc {
+  azimuth_true_deg: number;
+  elevation_deg?: number;
+  cardinal16: string;
+  source: CaptureViewSource;
+}
+
 export type CommandType =
   | "aim_absolute"
   | "aim_delta"
@@ -98,4 +108,5 @@ export interface CaptureDoc {
   calibration_ai?: Record<string, unknown>;
   calibration_analysis_model?: string;
   calibration_analyzedAt?: Date;
+  view?: CaptureViewDoc;
 }

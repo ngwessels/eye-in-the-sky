@@ -1,6 +1,7 @@
 import { stationFetch } from "./http.js";
 import { uploadMockCapture } from "./upload-capture.js";
 import { config } from "./config.js";
+import * as panTilt from "./pan-tilt-mock.js";
 
 type Command = {
   commandId: string;
@@ -24,10 +25,13 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
       body: JSON.stringify(p),
     });
     if (config.mockCamera) {
+      const pose = panTilt.getPose();
       const { s3Key } = await uploadMockCapture({
         trace_id: cmd.trace_id,
         command_id: cmd.commandId,
         kind: "calibration",
+        mount_pan_deg: pose.pan,
+        mount_tilt_deg: pose.tilt,
       });
       keys.push(s3Key);
     }

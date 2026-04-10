@@ -2,16 +2,20 @@ import { generateObject } from "ai";
 import { createGateway } from "@ai-sdk/gateway";
 import { analysisOutputSchema } from "@eye/shared";
 import { getEnv } from "./env";
+import { formatFacingContext } from "./facing-prompt";
+import type { CaptureViewDoc } from "./types";
 
 const SKY_PROMPT = `You are a meteorological vision assistant. Analyze the sky image for cloud types relevant to severe weather (cumulonimbus, shelf cloud, mammatus, dust walls, precipitation shafts).
 Return structured JSON matching the schema. Be conservative with confidence. If suggesting next aim, prefer small pan/tilt deltas.`;
 
 export async function runSkyImageAnalysis(
   imageUrl: string,
-  modelId?: string,
+  opts?: { modelId?: string; view?: CaptureViewDoc },
 ): Promise<{ output: import("@eye/shared").AnalysisOutput; model: string }> {
   const env = getEnv();
-  const model = modelId ?? env.AI_VISION_MODEL;
+  const model = opts?.modelId ?? env.AI_VISION_MODEL;
+  const facing = formatFacingContext(opts?.view);
+  const userText = `${facing}\n\n${SKY_PROMPT}`;
   const apiKey = env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error("AI_GATEWAY_API_KEY not configured");
@@ -26,7 +30,7 @@ export async function runSkyImageAnalysis(
       {
         role: "user",
         content: [
-          { type: "text", text: SKY_PROMPT },
+          { type: "text", text: userText },
           { type: "image", image: new URL(imageUrl) },
         ],
       },
