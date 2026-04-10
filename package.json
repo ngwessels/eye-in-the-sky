@@ -1,0 +1,15 @@
+{
+  "name": "eye-in-the-sky",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "edge"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @eye/shared && npm run dev -w @eye/web",
+    "build": "npm run build -w @eye/shared && npm run build -w @eye/web",
+    "lint": "npm run lint -w @eye/web --if-present",
+    "edge:dev": "npm run dev -w @eye/edge"
+  }
+}

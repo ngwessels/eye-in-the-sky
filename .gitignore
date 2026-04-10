@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build / output
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Env and secrets (never commit)
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+AuthKey_*.p8
+*.p8
+id_rsa
+id_rsa.*
+*.pem.crt
+*.pem.key
+
+# AWS (if copied locally by mistake)
+.aws/
+credentials
+
+# Vercel
+.vercel
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Logs and debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local media / calibration scratch
+local-captures/
+scratch/
+tmp/
+temp/
+
+# Misc
+*.local
+.cache/
