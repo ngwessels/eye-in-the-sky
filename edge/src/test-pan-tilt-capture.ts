@@ -42,11 +42,19 @@ async function main() {
   } else {
     console.warn("    Mode=all can exceed default presign rate limits; raise RATE_PRESIGN_PER_MIN or use sparse.");
   }
+  const cmd = process.env.CAPTURE_STILL_CMD?.trim();
+  console.log(
+    "  Real camera path:",
+    !config.mockCamera,
+    "(MOCK_CAMERA=0 → true; requires CAPTURE_STILL_CMD for uploads)",
+  );
   console.log(
     "  Image source:",
-    process.env.CAPTURE_STILL_CMD?.trim()
+    cmd
       ? "CAPTURE_STILL_CMD (stdout JPEG)"
-      : "built-in mock JPEG (set CAPTURE_STILL_CMD for real stills)",
+      : config.mockCamera
+        ? "built-in tiny mock JPEG (mock mode and no CAPTURE_STILL_CMD)"
+        : "will fail until CAPTURE_STILL_CMD is set",
   );
   console.log("  trace_id (all uploads this run):", traceId);
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { config } from "./config.js";
 import { MOCK_JPEG } from "./camera-mock.js";
 
 const execFileAsync = promisify(execFile) as (
@@ -39,12 +40,16 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
 }
 
 /**
- * Test / pipeline checks: uses `CAPTURE_STILL_CMD` if set, otherwise the tiny built-in mock JPEG.
+ * Used by `test-pan-tilt-capture`: same rules as the agent — if `MOCK_CAMERA=0`, requires
+ * `CAPTURE_STILL_CMD` (no silent fallback to the tiny mock JPEG).
  */
 export async function getJpegForUpload(): Promise<Buffer> {
   const cmd = process.env.CAPTURE_STILL_CMD?.trim();
-  if (!cmd) {
-    return MOCK_JPEG;
+  if (cmd) {
+    return jpegFromShell(cmd);
   }
-  return jpegFromShell(cmd);
+  if (!config.mockCamera) {
+    return getJpegForRealCamera();
+  }
+  return MOCK_JPEG;
 }
