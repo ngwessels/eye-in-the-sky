@@ -29,7 +29,7 @@ function formatS3ErrorBody(raw: string): { snippet: string; accessDenied: boolea
 export type StationCaptureUploadOpts = {
   trace_id?: string;
   command_id?: string;
-  kind?: "science" | "calibration";
+  kind?: "science" | "calibration" | "calibration_probe";
   /** Mount pan/tilt in degrees at shutter time; server applies north_offset for true azimuth. */
   mount_pan_deg?: number;
   mount_tilt_deg?: number;

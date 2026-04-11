@@ -103,6 +103,10 @@ async function pollCommands() {
   }
 }
 
+function delayMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function ack(
   commandId: string,
   ok: boolean,
@@ -187,6 +191,34 @@ async function handleCommand(cmd: Command) {
           trace_id: cmd.trace_id,
           command_id: cmd.commandId,
           kind: "science" as const,
+          mount_pan_deg: pose.pan,
+          mount_tilt_deg: pose.tilt,
+        };
+        if (config.mockCamera) {
+          await uploadMockCapture(uploadOpts);
+        } else {
+          const jpeg = await getJpegForRealCamera();
+          await uploadStationCapture(jpeg, uploadOpts);
+        }
+        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+        break;
+      }
+      case "calibration_sky_probe": {
+        if (gpsBad) {
+          const br = positionBadReason(gps);
+          await ack(cmd.commandId, false, undefined, aimAbsoluteAckError(br));
+          break;
+        }
+        const az = Number(cmd.payload.azimuthDeg);
+        const el = Number(cmd.payload.elevationDeg);
+        const pan = geographicAzimuthToMountPanDeg(az, getMountNorthOffsetDeg());
+        await panTilt.applyAbsolute(pan, el);
+        await delayMs(config.calibrationSkyProbeSettleMs);
+        const pose = panTilt.getPose();
+        const uploadOpts = {
+          trace_id: cmd.trace_id,
+          command_id: cmd.commandId,
+          kind: "calibration_probe" as const,
           mount_pan_deg: pose.pan,
           mount_tilt_deg: pose.tilt,
         };

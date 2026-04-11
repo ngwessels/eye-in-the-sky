@@ -5,6 +5,7 @@ import { getDb } from "@/lib/mongodb";
 import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
 import { getEnv } from "@/lib/env";
 import { applyGpsSnapshotToStation } from "@/lib/gps-policy";
+import { greatCircleDistanceKm } from "@/lib/geometry";
 import { validateTelemetryReadings } from "@/lib/telemetry-validate";
 import { recomputeQualityTier } from "@/lib/tier";
 import { maybeEnqueueBootstrapCalibration } from "@/lib/calibration-bootstrap";
@@ -61,6 +62,22 @@ export async function POST(request: Request) {
   if (parsed.data.gps) {
     const gpsPatch = applyGpsSnapshotToStation(station, parsed.data.gps);
     Object.assign(update, gpsPatch);
+    const src = parsed.data.gps.position_source ?? "gnss";
+    const newLoc = gpsPatch.location as { lat: number; lon: number } | undefined;
+    const anchor = station.calibration?.anchor;
+    if (
+      newLoc &&
+      anchor &&
+      src === "gnss" &&
+      !gpsPatch.gps?.degraded &&
+      gpsPatch.gps?.fix_type !== "none"
+    ) {
+      const distM =
+        greatCircleDistanceKm(newLoc.lat, newLoc.lon, anchor.lat, anchor.lon) * 1000;
+      if (distM > env.CALIBRATION_ANCHOR_MOVE_M) {
+        update["calibration.suspected_location_shift"] = true;
+      }
+    }
   }
 
   const sensorTypes = [...new Set(readings.map((r) => r.type))].sort();

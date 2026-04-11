@@ -15,7 +15,8 @@ export type CommandType =
   | "aim_delta"
   | "capture_now"
   | "safe_home"
-  | "run_calibration";
+  | "run_calibration"
+  | "calibration_sky_probe";
 
 export type CommandState = "pending" | "ack" | "failed" | "expired";
 
@@ -53,6 +54,15 @@ export interface StationDoc {
     confidence: number;
     updatedAt?: Date;
     method: string[];
+    /** WGS84 snapshot when a calibration met minimum confidence; used to detect physical moves. */
+    anchor?: { lat: number; lon: number; updatedAt?: Date };
+    /** Set when GNSS fix is far from `anchor`; cleared after a successful recalibration. */
+    suspected_location_shift?: boolean;
+    orchestrator?: {
+      last_evaluation_at?: Date;
+      last_reasons?: string[];
+      last_action?: string;
+    };
   };
   quality_tier: QualityTier;
   tier_reasons: string[];
@@ -66,6 +76,15 @@ export interface StationDoc {
   clock_untrusted?: boolean;
   sensor_anomaly_flags?: string[];
   calibration_server_validation?: Record<string, unknown>;
+  /** Last sky-probe capture analysis and timing (server-written). */
+  calibration_opportunity?: {
+    last_probe_at?: Date;
+    last_probe_analysis?: Record<string, unknown>;
+    last_probe_capture_id?: string;
+    last_probe_model?: string;
+  };
+  calibration_progress?: { phase: string; percent: number; updatedAt?: Date };
+  calibration_s3_keys?: string[];
 }
 
 export interface CommandDoc {
@@ -99,7 +118,7 @@ export interface CaptureDoc {
   capturedAt: Date;
   trace_id?: string;
   command_id?: string;
-  kind: "science" | "calibration";
+  kind: "science" | "calibration" | "calibration_probe";
   clock_skew_ms?: number;
   sha256?: string;
   analysis?: Record<string, unknown> | null;

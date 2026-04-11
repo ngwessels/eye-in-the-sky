@@ -10,13 +10,14 @@ import { azimuthToCardinal16, normalizeAzimuthDeg } from "@eye/shared";
 import { z } from "zod";
 import { analyzeCaptureById } from "@/lib/jobs/analyze-capture-id";
 import { analyzeCalibrationCaptureById } from "@/lib/jobs/analyze-calibration-capture-id";
+import { analyzeCalibrationProbeById } from "@/lib/jobs/analyze-calibration-probe-id";
 import { recomputeQualityTier } from "@/lib/tier";
 
 const presignBody = z.object({
   action: z.literal("presign"),
   mediaType: z.enum(["image", "video"]),
   contentType: z.string().min(3),
-  kind: z.enum(["science", "calibration"]).default("science"),
+  kind: z.enum(["science", "calibration", "calibration_probe"]).default("science"),
   captureId: z.string().uuid().optional(),
 });
 
@@ -28,7 +29,7 @@ const finalizeBody = z.object({
   capturedAt: z.string().datetime(),
   trace_id: z.string().optional(),
   command_id: z.string().optional(),
-  kind: z.enum(["science", "calibration"]),
+  kind: z.enum(["science", "calibration", "calibration_probe"]),
   sha256: z.string().optional(),
   contentType: z.string(),
   /** True-north azimuth in degrees (clockwise); if set, north_offset is not applied. */
@@ -248,6 +249,8 @@ export async function POST(request: Request) {
 
     if (d.kind === "science") {
       after(() => analyzeCaptureById(d.captureId));
+    } else if (d.kind === "calibration_probe") {
+      after(() => analyzeCalibrationProbeById(d.captureId));
     } else {
       after(() => analyzeCalibrationCaptureById(d.captureId));
     }

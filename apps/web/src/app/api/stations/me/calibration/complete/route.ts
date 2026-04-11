@@ -161,6 +161,16 @@ export async function POST(request: Request) {
     confidence: conf,
     method: methods,
     updatedAt: now,
+    anchor:
+      conf >= 0.3 && station.location
+        ? {
+            lat: station.location.lat,
+            lon: station.location.lon,
+            updatedAt: now,
+          }
+        : station.calibration?.anchor,
+    suspected_location_shift:
+      conf >= 0.3 ? false : station.calibration?.suspected_location_shift,
   };
 
   const merged: StationDoc = {

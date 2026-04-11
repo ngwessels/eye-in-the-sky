@@ -31,7 +31,7 @@ export function resolveCaptureObjectKey(
   stationId: string,
   captureId: string,
   ext: string,
-  kind: "science" | "calibration",
+  kind: "science" | "calibration" | "calibration_probe",
 ): string {
   if (kind === "calibration") {
     return calibrationKey(stationId, `${captureId}.${ext}`);

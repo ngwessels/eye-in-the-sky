@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEnv } from "@/lib/env";
-import { runCalibrationOrchestratorTick } from "@/lib/calibration-orchestrator";
+import { runGroundObservationTick } from "@/lib/ground-observation";
 
 export async function GET(request: Request) {
   const auth = request.headers.get("authorization");
@@ -9,6 +9,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const result = await runCalibrationOrchestratorTick();
+  const result = await runGroundObservationTick();
   return NextResponse.json(result);
 }

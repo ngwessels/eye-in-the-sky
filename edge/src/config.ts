@@ -105,4 +105,6 @@ export const config = {
   calibrationHomeSettleMs: Math.max(500, Number(process.env.CALIBRATION_HOME_SETTLE_MS ?? 2500)),
   /** After each calibration pose change before progress + still (ms). */
   calibrationPhaseSettleMs: Math.max(200, Number(process.env.CALIBRATION_POSE_SETTLE_MS ?? 800)),
+  /** After `calibration_sky_probe` aim before shutter (ms). */
+  calibrationSkyProbeSettleMs: Math.max(400, Number(process.env.CALIBRATION_SKY_PROBE_SETTLE_MS ?? 1200)),
 };
