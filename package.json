@@ -1,5 +1,5 @@
 {
-  "name": "eye-in-the-sky",
+  "name": "eye-on-the-sky",
   "private": true,
   "workspaces": [
     "apps/*",

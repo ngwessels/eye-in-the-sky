@@ -1,4 +1,4 @@
-# Eye in the Sky — Raspberry Pi station setup
+# Eye on the Sky — Raspberry Pi station setup
 
 This guide walks through running the **edge agent** on a Raspberry Pi so it registers with your deployed cloud API, uploads captures to **S3**, reports **GPS** and optional **sensors**, and executes **pan/tilt** commands.
 
@@ -51,8 +51,8 @@ Clone the repository (or copy the project). You need the **workspace** so `@eye/
 
 ```bash
 cd ~
-git clone <your-repo-url> eye-in-the-sky
-cd eye-in-the-sky
+git clone <your-repo-url> eye-on-the-sky
+cd eye-on-the-sky
 npm install
 npm run build -w @eye/shared
 npm run build -w @eye/edge
@@ -61,7 +61,7 @@ npm run build -w @eye/edge
 Smoke test:
 
 ```bash
-cd ~/eye-in-the-sky
+cd ~/eye-on-the-sky
 # After .env is configured (next section):
 node edge/start.mjs
 ```
@@ -91,7 +91,7 @@ Save the returned `apiKey` (**shown once**). You will put it in `STATION_API_KEY
 ## 5. Configure the edge agent on the Pi
 
 ```bash
-cd ~/eye-in-the-sky/edge
+cd ~/eye-on-the-sky/edge
 cp .env.example .env
 nano .env   # or use your editor
 ```
@@ -177,19 +177,19 @@ The edge agent uses the same PWM mapping as [`pan-tilt-bridge.ino`](edge/firmwar
 
 ## 6. Run as a systemd service (recommended)
 
-Create `/etc/systemd/system/eye-in-the-sky-edge.service`:
+Create `/etc/systemd/system/eye-on-the-sky-edge.service`:
 
 ```ini
 [Unit]
-Description=Eye in the Sky edge agent
+Description=Eye on the Sky edge agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/eye-in-the-sky
-EnvironmentFile=/home/pi/eye-in-the-sky/edge/.env
+WorkingDirectory=/home/pi/eye-on-the-sky
+EnvironmentFile=/home/pi/eye-on-the-sky/edge/.env
 ExecStart=/usr/bin/node edge/start.mjs
 Restart=always
 RestartSec=10
@@ -202,16 +202,16 @@ Adjust `User=` and paths if your home directory differs.
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now eye-in-the-sky-edge.service
-sudo systemctl status eye-in-the-sky-edge.service
-journalctl -u eye-in-the-sky-edge.service -f
+sudo systemctl enable --now eye-on-the-sky-edge.service
+sudo systemctl status eye-on-the-sky-edge.service
+journalctl -u eye-on-the-sky-edge.service -f
 ```
 
 After updating code:
 
 ```bash
-cd ~/eye-in-the-sky && npm run build -w @eye/shared && npm run build -w @eye/edge
-sudo systemctl restart eye-in-the-sky-edge.service
+cd ~/eye-on-the-sky && npm run build -w @eye/shared && npm run build -w @eye/edge
+sudo systemctl restart eye-on-the-sky-edge.service
 ```
 
 ## 7. Device permissions (serial, I²C pan/tilt, GNSS, Wi-Fi scan)
@@ -282,7 +282,7 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 | `wifi_not_allowed_for_aim` | Wi-Fi fix present but `ALLOW_WIFI_FOR_AIM=0`; use GNSS or set `ALLOW_WIFI_FOR_AIM=1`. |
 | Legacy `gps_degraded` in old acks | Same family as above; new edge versions use the specific errors in the rows above. |
 | No Wi-Fi position / scan errors | `command -v iw`; run `iw dev wlan0 scan` as the service user; use `WIFI_IW_USE_SUDO=1` + sudoers, or `WIFI_SCAN_CMD`. |
-| Service exits immediately | `journalctl -u eye-in-the-sky-edge -e`; verify `node` path and `WorkingDirectory`. |
+| Service exits immediately | `journalctl -u eye-on-the-sky-edge -e`; verify `node` path and `WorkingDirectory`. |
 
 ## Related docs
 

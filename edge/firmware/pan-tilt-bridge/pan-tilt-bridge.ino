@@ -1,5 +1,5 @@
 /*
- * Eye in the Sky — PCA9685 pan/tilt serial bridge for Arduino-class boards.
+ * Eye on the Sky — PCA9685 pan/tilt serial bridge for Arduino-class boards.
  *
  * PWM math matches ArduCAM's Raspberry Pi reference (PCA9685.c) from:
  * https://github.com/ArduCAM/PCA9685

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Eye in the Sky",
+  title: "Eye on the Sky",
   description: "Weather mesh control plane",
 };
 

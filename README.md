@@ -1,4 +1,4 @@
-# Eye in the Sky
+# Eye on the Sky
 
 Open-source weather camera mesh: Raspberry Pi **edge** agents (Node.js) upload sky imagery to **AWS S3**, poll **MongoDB-backed commands** from a **Next.js** app on Vercel, and report **GPS + optional sensors**. The server uses **Apple Weather Kit** (optional) for orchestration, **Vercel AI Gateway** for vision analysis, and **closed-loop** aim/capture commands.
 

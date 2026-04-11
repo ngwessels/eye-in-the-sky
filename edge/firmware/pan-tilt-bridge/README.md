@@ -1,6 +1,6 @@
 # Pan/tilt serial bridge (Arduino + PCA9685)
 
-Firmware for an Arduino-class board that drives an **I²C PCA9685** (for example the Arducam pan-tilt kit) and listens for commands from the **Eye in the Sky edge agent** over **serial** (not I²C).
+Firmware for an Arduino-class board that drives an **I²C PCA9685** (for example the Arducam pan-tilt kit) and listens for commands from the **Eye on the Sky edge agent** over **serial** (not I²C).
 
 ## I²C vs serial (read this first)
 

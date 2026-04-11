@@ -276,7 +276,7 @@ async function pullMountSettingsOnce() {
   }
 }
 
-log.info("Eye in the Sky edge agent ready", {
+log.info("Eye on the Sky edge agent ready", {
   cloud: config.cloudBaseUrl,
   pollMs: config.commandPollIntervalMs,
   panTiltDriver: config.panTiltDriver,
