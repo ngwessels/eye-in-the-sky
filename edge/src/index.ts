@@ -251,6 +251,7 @@ log.info("Eye in the Sky edge agent ready", {
   panTiltBackend: panTilt.panTiltBackend,
   mockCamera: config.mockCamera,
   wifiPositioning: config.wifiPositioningEnabled,
+  wifiIpGeoFallback: config.wifiIpGeoFallbackEnabled,
   allowWifiForAim: config.allowWifiForAim,
 });
 if (!config.wifiPositioningEnabled) {

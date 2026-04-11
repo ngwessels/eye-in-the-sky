@@ -9,6 +9,10 @@ export function applyGpsSnapshotToStation(
   const env = getEnv();
   const source = gps.position_source ?? "gnss";
 
+  if (source === "registered" || gps.fix_type === "station_record") {
+    return { lastSeenAt: new Date() };
+  }
+
   if (source === "wifi") {
     let quality_tier = station.quality_tier;
     let tier_reasons = [...(station.tier_reasons ?? [])];

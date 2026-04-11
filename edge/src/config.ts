@@ -55,6 +55,12 @@ export const config = {
    */
   wifiScanShellCmd: (process.env.WIFI_SCAN_CMD ?? "").trim() || undefined,
   /**
+   * After MLS fails (or if you only need IP coarse fix), call geojs.io from the Pi. Disable with
+   * `WIFI_IP_GEO_FALLBACK=0` if you must avoid that third party.
+   */
+  wifiIpGeoFallbackEnabled:
+    process.env.WIFI_IP_GEO_FALLBACK !== "0" && process.env.WIFI_IP_GEO_FALLBACK !== "false",
+  /**
    * When false, `aim_absolute` is rejected if the only position fix is Wi-Fi (telemetry still sends it).
    * Default: allow coarse Wi-Fi position for slewing.
    */

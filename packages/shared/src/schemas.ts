@@ -25,8 +25,8 @@ export const gpsSnapshotSchema = z.object({
   sat_count: z.number().int().nonnegative().optional(),
   fix_type: z.enum(["none", "2d", "3d", "dgps", "rtk"]).or(z.string()),
   observedAt: z.string().datetime(),
-  /** Omitted or `"gnss"` = satellite fix; `"wifi"` = Wi-Fi geolocation (coarse). */
-  position_source: z.enum(["gnss", "wifi"]).optional(),
+  /** Omitted or `"gnss"` = satellite fix; `"wifi"` = Wi-Fi geolocation; `"registered"` = cloud `stations.location` fallback on edge. */
+  position_source: z.enum(["gnss", "wifi", "registered"]).optional(),
   /** Circular accuracy (m), e.g. from Mozilla geolocate `accuracy`. */
   accuracy_m: z.number().positive().optional(),
 });
