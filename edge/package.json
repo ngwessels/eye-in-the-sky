@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "prebuild": "npm run build -w @eye/shared",
     "build": "tsc",
     "start": "node dist/index.js",
     "test-pan-tilt": "tsx src/test-pan-tilt.ts",
