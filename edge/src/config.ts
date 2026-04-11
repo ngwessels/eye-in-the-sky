@@ -36,4 +36,12 @@ export const config = {
   panTiltSerialBaud: Number(process.env.PAN_TILT_SERIAL_BAUD ?? 115200),
   panTiltI2cBus: Number(process.env.PAN_TILT_I2C_BUS ?? 1),
   panTiltPca9685Addr: parseI2cAddr(process.env.PAN_TILT_PCA9685_ADDR, 0x40),
+  /** PCA9685 only: maps logical pan/tilt to 0–180° servo commands (same role as kOut* in pan-tilt-bridge.ino). Widen the span to move more per logical degree. */
+  panTiltServoPanOutMin: Number(process.env.PAN_TILT_SERVO_PAN_OUT_MIN ?? 0),
+  panTiltServoPanOutMax: Number(process.env.PAN_TILT_SERVO_PAN_OUT_MAX ?? 180),
+  panTiltServoTiltOutMin: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MIN ?? 15),
+  panTiltServoTiltOutMax: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MAX ?? 145),
+  /** `npm run test-pan-tilt` step size (logical degrees). Small values map to tiny servo motion because pan spans 360° logical → 180° servo. */
+  panTiltTestDeltaPan: Number(process.env.PAN_TILT_TEST_DELTA_PAN ?? 45),
+  panTiltTestDeltaTilt: Number(process.env.PAN_TILT_TEST_DELTA_TILT ?? 20),
 };

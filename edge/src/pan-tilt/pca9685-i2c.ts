@@ -2,13 +2,9 @@ import { openPromisified, type PromisifiedBus } from "i2c-bus";
 import { config } from "../config.js";
 import type { PanTiltDriver, PanTiltPose } from "./types.js";
 
-/** Matches `pan-tilt-bridge.ino` — ArduCAM-style tilt/pan channels and output ranges. */
+/** Matches `pan-tilt-bridge.ino` — ArduCAM-style channel map (tilt=0, pan=1). */
 const SERVO_TILT_CH = 0;
 const SERVO_PAN_CH = 1;
-const OUT_TILT_MIN = 15;
-const OUT_TILT_MAX = 145;
-const OUT_PAN_MIN = 0;
-const OUT_PAN_MAX = 180;
 
 const REG_MODE1 = 0x00;
 const REG_PRESCALE = 0xfe;
@@ -86,15 +82,25 @@ export function createPca9685PanTilt(): PanTiltDriver {
   }
 
   function mapPanToServo(panDeg: number): number {
-    const p = clamp(panDeg, config.panMin, config.panMax);
-    const t = (p - config.panMin) / (config.panMax - config.panMin);
-    return Math.round(t * (OUT_PAN_MAX - OUT_PAN_MIN) + OUT_PAN_MIN);
+    const lo = config.panMin;
+    const hi = config.panMax;
+    const span = hi - lo || 1;
+    const outLo = config.panTiltServoPanOutMin;
+    const outHi = config.panTiltServoPanOutMax;
+    const p = clamp(panDeg, lo, hi);
+    const t = (p - lo) / span;
+    return Math.round(t * (outHi - outLo) + outLo);
   }
 
   function mapTiltToServo(tiltDeg: number): number {
-    const tIn = clamp(tiltDeg, config.tiltMin, config.tiltMax);
-    const u = (tIn - config.tiltMin) / (config.tiltMax - config.tiltMin);
-    return Math.round(u * (OUT_TILT_MAX - OUT_TILT_MIN) + OUT_TILT_MIN);
+    const lo = config.tiltMin;
+    const hi = config.tiltMax;
+    const span = hi - lo || 1;
+    const outLo = config.panTiltServoTiltOutMin;
+    const outHi = config.panTiltServoTiltOutMax;
+    const tIn = clamp(tiltDeg, lo, hi);
+    const u = (tIn - lo) / span;
+    return Math.round(u * (outHi - outLo) + outLo);
   }
 
   async function drivePose(panDeg: number, tiltDeg: number) {
