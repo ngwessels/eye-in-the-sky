@@ -41,7 +41,8 @@ export const config = {
   panTiltServoPanOutMax: Number(process.env.PAN_TILT_SERVO_PAN_OUT_MAX ?? 180),
   panTiltServoTiltOutMin: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MIN ?? 15),
   panTiltServoTiltOutMax: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MAX ?? 145),
-  /** `npm run test-pan-tilt` step size (logical degrees). Small values map to tiny servo motion because pan spans 360° logical → 180° servo. */
-  panTiltTestDeltaPan: Number(process.env.PAN_TILT_TEST_DELTA_PAN ?? 45),
-  panTiltTestDeltaTilt: Number(process.env.PAN_TILT_TEST_DELTA_TILT ?? 20),
+  /** `npm run test-pan-tilt`: pause after each pose (ms). */
+  panTiltTestDwellMs: Number(process.env.PAN_TILT_TEST_DWELL_MS ?? 2200),
+  /** `npm run test-pan-tilt`: segments per sweep (positions = segments + 1). */
+  panTiltTestSweepSteps: Math.max(2, Math.floor(Number(process.env.PAN_TILT_TEST_SWEEP_STEPS ?? 14))),
 };
