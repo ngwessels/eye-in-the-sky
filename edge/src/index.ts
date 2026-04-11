@@ -14,6 +14,7 @@ import {
   setMountNorthOffsetFromCloud,
   setMountTiltOffsetFromCloud,
 } from "./mount-settings-cache.js";
+import { sessionDebug } from "./debug-session-log.js";
 
 type Command = {
   commandId: string;
@@ -68,13 +69,22 @@ async function sendTelemetry() {
 async function pollCommands() {
   const res = await stationFetch("/api/stations/me/commands", { method: "GET" });
   if (!res.ok) {
-    log.error("poll failed", { status: res.status, body: await res.text() });
+    const errBody = await res.text();
+    sessionDebug("A", "index.ts:pollCommands", "commands GET not ok", {
+      status: res.status,
+      bodyLen: errBody.length,
+    });
+    log.error("poll failed", { status: res.status, body: errBody });
     return;
   }
   const data = (await res.json()) as {
     commands: Command[];
     mount?: { tilt_offset_deg?: number; north_offset_deg?: number };
   };
+  sessionDebug("A", "index.ts:pollCommands", "commands poll ok", {
+    count: data.commands.length,
+    types: data.commands.map((c) => c.type),
+  });
   const tiltOff = data.mount?.tilt_offset_deg;
   if (tiltOff != null && Number.isFinite(tiltOff)) {
     setMountTiltOffsetFromCloud(tiltOff);
@@ -101,6 +111,10 @@ async function ack(
 }
 
 async function handleCommand(cmd: Command) {
+  sessionDebug("F", "index.ts:handleCommand", "handleCommand enter", {
+    type: cmd.type,
+    commandId8: cmd.commandId.slice(0, 8),
+  });
   const gps = latestPositionSnapshot;
   const gpsBad = isPositionBadForAim(gps);
 
@@ -156,6 +170,10 @@ async function handleCommand(cmd: Command) {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    sessionDebug("C", "index.ts:handleCommand", "handleCommand error", {
+      type: cmd.type,
+      error: msg,
+    });
     await ack(cmd.commandId, false, undefined, msg);
   }
 }
@@ -213,6 +231,19 @@ process.on("uncaughtException", (err) => {
 
 void (async () => {
   try {
+    sessionDebug("B", "index.ts:main", "first poll cycle starting", {
+      commandPollIntervalMs: config.commandPollIntervalMs,
+      panTiltBackend: panTilt.panTiltBackend,
+    });
+    sessionDebug("E", "index.ts:main", "startup", {
+      cloudHost: (() => {
+        try {
+          return new URL(config.cloudBaseUrl).host;
+        } catch {
+          return "invalid_url";
+        }
+      })(),
+    });
     await pullMountSettingsOnce();
     await loop();
   } catch (e) {

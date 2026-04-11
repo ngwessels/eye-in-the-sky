@@ -3,6 +3,7 @@ import { getJpegForRealCamera } from "./capture-jpeg.js";
 import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import { config } from "./config.js";
 import * as panTilt from "./pan-tilt/index.js";
+import { sessionDebug } from "./debug-session-log.js";
 
 type Command = {
   commandId: string;
@@ -17,7 +18,15 @@ function delayMs(ms: number): Promise<void> {
 export async function runCalibrationSequence(cmd: Command): Promise<void> {
   const keys: string[] = [];
 
+  sessionDebug("C", "calibration-flow.ts:runCalibrationSequence", "calibration sequence start", {
+    panTiltBackend: panTilt.panTiltBackend,
+    mockCamera: config.mockCamera,
+    settleMs: config.calibrationHomeSettleMs,
+  });
   await panTilt.safeHome();
+  sessionDebug("C", "calibration-flow.ts:afterSafeHome", "after safeHome", {
+    pose: panTilt.getPose(),
+  });
   await delayMs(config.calibrationHomeSettleMs);
 
   const phases = [
