@@ -1,3 +1,4 @@
+import "./early-boot.js";
 import type { GpsSnapshot } from "@eye/shared";
 import { config } from "./config.js";
 import { log } from "./logger.js";
