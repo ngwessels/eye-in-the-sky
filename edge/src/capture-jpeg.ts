@@ -14,6 +14,34 @@ const CAPTURE_CLI_HINT =
   "(then try `rpicam-still` or `libcamera-still`; on older OS use `raspistill` from libraspberrypi-bin). " +
   "Check: command -v rpicam-still libcamera-still raspistill";
 
+function hasExplicitQuality(cmd: string): boolean {
+  return /(^|\s)-q(?:\s+|=)\d/.test(cmd) || /(^|\s)--quality(?:\s+|=)\d/.test(cmd);
+}
+
+/**
+ * Appends `-q N` for rpicam / libcamera / raspistill when the command does not already set quality.
+ * - Unset env → default **96** (high quality, larger files than rpicam’s ~93 default).
+ * - `CAPTURE_JPEG_QUALITY=none` or `off` → do not append (you control quality inside CAPTURE_STILL_CMD).
+ * - `1`…`100` → append that value.
+ */
+function parseJpegQualityForAppend(): number | null {
+  const raw = process.env.CAPTURE_JPEG_QUALITY?.trim();
+  if (raw === undefined || raw === "") return 96;
+  const lower = raw.toLowerCase();
+  if (lower === "off" || lower === "none") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 100) return 96;
+  return Math.round(n);
+}
+
+function buildCaptureShellCommand(): string {
+  const base = process.env.CAPTURE_STILL_CMD?.trim() ?? "";
+  if (!base) return base;
+  const q = parseJpegQualityForAppend();
+  if (q === null || hasExplicitQuality(base)) return base;
+  return `${base} -q ${q}`;
+}
+
 async function jpegFromShell(cmd: string): Promise<Buffer> {
   try {
     const { stdout } = await execFileAsync("sh", ["-c", cmd], {
@@ -30,7 +58,8 @@ async function jpegFromShell(cmd: string): Promise<Buffer> {
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { stderr?: Buffer; status?: number };
     const code = typeof err.code === "number" ? err.code : err.status;
-    const stderr = err.stderr ? err.stderr.toString("utf8") : "";
+    const stderr =
+      (err.stderr ? err.stderr.toString("utf8") : "") + (err.message ?? "");
     const notFound =
       code === 127 ||
       /not found/i.test(stderr) ||
@@ -38,6 +67,12 @@ async function jpegFromShell(cmd: string): Promise<Buffer> {
     if (notFound) {
       throw new Error(
         `CAPTURE_STILL_CMD failed: camera CLI missing from PATH (e.g. libcamera-still: not found). ${CAPTURE_CLI_HINT}`,
+      );
+    }
+    if (/invalid encoding format/i.test(stderr)) {
+      throw new Error(
+        "CAPTURE_STILL_CMD: `rpicam-still` only accepts `-e jpg` (not `jpeg`); default encoding is already jpg so you can omit `-e`. " +
+          "Example: rpicam-still -e jpg -n --immediate --width 1280 --height 720 -o -",
       );
     }
     throw e;
@@ -50,11 +85,11 @@ async function jpegFromShell(cmd: string): Promise<Buffer> {
  * Example (Pi): `rpicam-still` or `libcamera-still` … `-o -` (see edge/.env.example).
  */
 export async function getJpegForRealCamera(): Promise<Buffer> {
-  const cmd = process.env.CAPTURE_STILL_CMD?.trim();
+  const cmd = buildCaptureShellCommand();
   if (!cmd) {
     throw new Error(
       "MOCK_CAMERA=0 requires CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout. " +
-        "Example: rpicam-still -e jpeg -n --immediate --width 1280 --height 720 -o -",
+        "Example: rpicam-still -e jpg -n --immediate --width 1280 --height 720 -o -",
     );
   }
   return jpegFromShell(cmd);
@@ -65,7 +100,7 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
  * `CAPTURE_STILL_CMD` (no silent fallback to the tiny mock JPEG).
  */
 export async function getJpegForUpload(): Promise<Buffer> {
-  const cmd = process.env.CAPTURE_STILL_CMD?.trim();
+  const cmd = buildCaptureShellCommand();
   if (cmd) {
     return jpegFromShell(cmd);
   }
