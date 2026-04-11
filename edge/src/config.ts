@@ -93,4 +93,6 @@ export const config = {
   ),
   /** After `safe_home` / pan 0 tilt 0 before calibration captures (ms). */
   calibrationHomeSettleMs: Math.max(500, Number(process.env.CALIBRATION_HOME_SETTLE_MS ?? 2500)),
+  /** After each calibration pose change before progress + still (ms). */
+  calibrationPhaseSettleMs: Math.max(200, Number(process.env.CALIBRATION_POSE_SETTLE_MS ?? 800)),
 };
