@@ -34,8 +34,12 @@ export const config = {
   cloudBaseUrl: req("CLOUD_BASE_URL").replace(/\/$/, ""),
   stationApiKey: req("STATION_API_KEY"),
   commandPollIntervalMs: Number(process.env.COMMAND_POLL_INTERVAL_MS ?? 180_000),
-  /** Wi-Fi scan + Mozilla Location Service when GNSS has no fix (see RASPBERRY_PI.md). */
-  wifiPositioningEnabled: envBool(process.env.WIFI_POSITIONING),
+  /**
+   * Wi-Fi scan + Mozilla MLS when GNSS has no fix. **On by default** so stations without GNSS in `gps.ts`
+   * still get coarse position. Set `WIFI_POSITIONING=0` or `false` to disable (e.g. air-gapped / no MLS).
+   */
+  wifiPositioningEnabled:
+    process.env.WIFI_POSITIONING !== "0" && process.env.WIFI_POSITIONING !== "false",
   wifiScanIface: (process.env.WIFI_SCAN_IFACE ?? "wlan0").trim(),
   /** Reuse last Wi-Fi fix for this long (ms) to avoid hammering MLS. Default 10 minutes. */
   wifiGeolocMinIntervalMs: Math.max(

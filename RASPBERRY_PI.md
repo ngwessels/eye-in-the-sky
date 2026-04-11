@@ -107,13 +107,13 @@ nano .env   # or use your editor
 | `PAN_TILT_SERIAL_BAUD` | Optional; default `115200` | Must match firmware |
 | `PAN_TILT_I2C_BUS` | Used for **auto** probe and `pca9685` (often **`1`** → `/dev/i2c-1`) | — |
 | `PAN_TILT_PCA9685_ADDR` | Used for **auto** probe and `pca9685` — decimal **`64`** or `0x40` | — |
-| `WIFI_POSITIONING` | **`1`** to use Mozilla MLS when GNSS has no fix (see Wi-Fi paragraph below) | Handy on a laptop without GNSS |
+| `WIFI_POSITIONING` | **Unset = on** — Mozilla MLS when GNSS has no fix (see Wi-Fi paragraph). Set **`0`** / **`false`** to disable | Air-gapped or no MLS |
 | `WIFI_SCAN_IFACE` | Wireless interface for `iw dev <iface> scan` (often **`wlan0`**) | — |
 | `ALLOW_WIFI_FOR_AIM` | Unset / **`1`** allow `aim_absolute` with Wi-Fi-only fix; **`0`** = reject | Production GNSS users may set `0` |
 
-**GNSS:** plug in the USB GNSS receiver. The stock agent does **not** yet parse NMEA in code; implement reading from `/dev/ttyACM0` / `/dev/serial0` and populate the fields the API expects (`lat`, `lon`, `hdop`, `sat_count`, `fix_type`, `observedAt`, optional `position_source: "gnss"`) in `edge/src/gps.ts`. Until then, use **`WIFI_POSITIONING=1`** for coarse position when you have no GNSS fix.
+**GNSS:** plug in the USB GNSS receiver. The stock agent does **not** yet parse NMEA in code; implement reading from `/dev/ttyACM0` / `/dev/serial0` and populate the fields the API expects (`lat`, `lon`, `hdop`, `sat_count`, `fix_type`, `observedAt`, optional `position_source: "gnss"`) in `edge/src/gps.ts`. Until then, **Wi-Fi fallback is enabled by default** for coarse position when there is no GNSS fix (set **`WIFI_POSITIONING=0`** to disable).
 
-**Wi-Fi based positioning (optional):** with **`WIFI_POSITIONING=1`**, when there is **no GNSS fix** the agent scans nearby access points, calls **Mozilla Location Service** (`https://location.services.mozilla.com/v1/geolocate`), and reports `position_source: "wifi"` in telemetry. Accuracy is typically **tens to hundreds of meters** — useful for a rough station location on the map, **not** a substitute for GNSS.
+**Wi-Fi based positioning (default on):** when there is **no GNSS fix**, the agent scans nearby access points, calls **Mozilla Location Service** (`https://location.services.mozilla.com/v1/geolocate`), and reports `position_source: "wifi"` in telemetry. Accuracy is typically **tens to hundreds of meters** — useful for a rough station location on the map, **not** a substitute for GNSS.
 
 - **Server behavior:** the cloud stores `location_source: "wifi"`, keeps **`gps.degraded: true`**, and does **not** promote quality tier or auto-enqueue bootstrap calibration (those still require a non-degraded GNSS fix).
 - **Pan/tilt:** by default, **`aim_absolute` is allowed** with a Wi-Fi-only fix (`ALLOW_WIFI_FOR_AIM` unset). Set **`ALLOW_WIFI_FOR_AIM=0`** to reject slews unless GNSS has a real fix (telemetry can still upload Wi-Fi position).
@@ -238,7 +238,7 @@ ls -l /dev/i2c-1
 
 Pan/tilt over serial + Arduino: [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino). The **`pca9685`** driver uses the same PWM math in Node; `npm install` pulls in **`i2c-bus`** (native build tools on the Pi: `build-essential` if install fails).
 
-**Wi-Fi scan** (`WIFI_POSITIONING=1`): the `pi` user normally **cannot** run `iw dev wlan0 scan` without extra privileges. Prefer **`sudoers`** allowing **`NOPASSWD: /usr/sbin/iw`** (or your distro’s `iw` path — check `command -v iw`) for the service account, or set capabilities on the **`node`** binary (advanced). Without this, MLS is never called and telemetry omits position when GNSS is absent.
+**Wi-Fi scan** (default unless `WIFI_POSITIONING=0`): the `pi` user normally **cannot** run `iw dev wlan0 scan` without extra privileges. Prefer **`sudoers`** allowing **`NOPASSWD: /usr/sbin/iw`** (or your distro’s `iw` path — check `command -v iw`) for the service account, or set capabilities on the **`node`** binary (advanced). Without this, MLS is never called and telemetry omits position when GNSS is absent.
 
 ## 8. Camera notes (Arducam / libcamera)
 
@@ -260,7 +260,7 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 |-----------|-------------|------------------|
 | Pan/tilt | **`auto`**: I²C PCA9685 on Pi, else serial if `PAN_TILT_SERIAL_PATH` set, else mock | [`edge/firmware/pan-tilt-bridge`](edge/firmware/pan-tilt-bridge) + `serialport` or Pi I²C `pca9685`; see [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi) |
 | Real GPS | No NMEA in stock `gps.ts` yet | Read NMEA from serial, build `GpsSnapshot` |
-| Wi-Fi position | Off unless `WIFI_POSITIONING=1` | `iw` / `nmcli` scan → Mozilla MLS; see §5 |
+| Wi-Fi position | **On by default** when GNSS has no fix; set `WIFI_POSITIONING=0` to disable | `iw` / `nmcli` scan → Mozilla MLS; see §5 |
 | BME280 / I2C | None in stock agent | Add a driver in `edge/src/sensors/collect.ts` (`i2c-bus` or sidecar) |
 | Lightning AS3935 | None in stock agent | Same pattern: driver → `collect.ts` → telemetry |
 
@@ -277,7 +277,10 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 | `telemetry failed 401` | `STATION_API_KEY` wrong or rotated; re-register if needed. |
 | `poll failed` / network errors | `CLOUD_BASE_URL`, DNS, firewall, TLS interception. |
 | `finalize failed` / `clock_skew` | System time (`timedatectl`); or set server `CLOCK_SKEW_MODE=downrank` if you must accept skew temporarily. |
-| `gps_degraded` / no `aim_absolute` | No fix or HDOP/sats below server thresholds; improve antenna sky view. With Wi-Fi-only fix: set `ALLOW_WIFI_FOR_AIM=1` (default) or expect `gps_degraded` ack when `ALLOW_WIFI_FOR_AIM=0`. |
+| `no_position_fix` / failed `aim_absolute` | No lat/lon at all: check Wi-Fi scan + MLS (`iw`, `WIFI_IW_USE_SUDO`, etc.). If you opted out, remove `WIFI_POSITIONING=0` from `.env`. Or implement GNSS in `edge/src/gps.ts`. |
+| `gps_degraded` / failed `aim_absolute` | Snapshot exists but `fix_type` is `none` (GNSS no fix). Improve sky view / antenna. |
+| `wifi_not_allowed_for_aim` | Wi-Fi fix present but `ALLOW_WIFI_FOR_AIM=0`; use GNSS or set `ALLOW_WIFI_FOR_AIM=1`. |
+| Legacy `gps_degraded` in old acks | Same family as above; new edge versions use the specific errors in the rows above. |
 | No Wi-Fi position / scan errors | `command -v iw`; run `iw dev wlan0 scan` as the service user; use `WIFI_IW_USE_SUDO=1` + sudoers, or `WIFI_SCAN_CMD`. |
 | Service exits immediately | `journalctl -u eye-in-the-sky-edge -e`; verify `node` path and `WorkingDirectory`. |
 

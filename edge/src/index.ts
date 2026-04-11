@@ -51,6 +51,13 @@ function positionBadReason(gps: GpsSnapshot | undefined): string {
   return "ok";
 }
 
+/** Stored on command ack — distinct from legacy `gps_degraded` where the cause is not GNSS quality. */
+function aimAbsoluteAckError(badReason: string): string {
+  if (badReason === "no_snapshot") return "no_position_fix";
+  if (badReason === "wifi_fix_but_allowWifiForAim_false") return "wifi_not_allowed_for_aim";
+  return "gps_degraded";
+}
+
 async function sendTelemetry() {
   const gps = latestPositionSnapshot;
   const readings = await collectSensorReadings();
@@ -144,17 +151,20 @@ async function handleCommand(cmd: Command) {
         );
         // #endregion
         if (gpsBad) {
+          const br = positionBadReason(gps);
+          const ackErr = aimAbsoluteAckError(br);
           // #region agent log
           console.log(
-            "[eye-debug] H3_H4 aim_absolute ack gps_degraded",
+            "[eye-debug] H3_H4 aim_absolute ack fail",
             JSON.stringify({
               hypothesisId: "H3_H4",
               commandId: cmd.commandId,
-              badReason: positionBadReason(gps),
+              badReason: br,
+              ackError: ackErr,
             }),
           );
           // #endregion
-          await ack(cmd.commandId, false, undefined, "gps_degraded");
+          await ack(cmd.commandId, false, undefined, ackErr);
           break;
         }
         const az = Number(cmd.payload.azimuthDeg);
@@ -243,6 +253,11 @@ log.info("Eye in the Sky edge agent ready", {
   wifiPositioning: config.wifiPositioningEnabled,
   allowWifiForAim: config.allowWifiForAim,
 });
+if (!config.wifiPositioningEnabled) {
+  log.info(
+    "Wi-Fi positioning disabled (WIFI_POSITIONING=0). Without a GNSS fix in gps.ts, telemetry may omit position and aim_absolute may fail with no_position_fix.",
+  );
+}
 
 process.on("unhandledRejection", (reason) => {
   log.error("unhandledRejection", { reason: reason instanceof Error ? reason.message : String(reason) });
