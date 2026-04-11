@@ -15,6 +15,9 @@ const schema = z.object({
   APPLE_TEAM_ID: z.string().optional(),
   APPLE_SERVICE_ID: z.string().optional(),
   APPLE_KEY_ID: z.string().optional(),
+  /** Full PEM contents (use in Vercel / CI; never commit). Literal \\n in the value is normalized to newlines. */
+  APPLE_PRIVATE_KEY: z.string().optional(),
+  /** Local dev: path to AuthKey_*.p8 */
   APPLE_PRIVATE_KEY_PATH: z.string().optional(),
   RATE_POLL_PER_MIN: z.coerce.number().default(30),
   RATE_TELEMETRY_PER_MIN: z.coerce.number().default(40),

@@ -12,13 +12,24 @@ export interface WeatherSnapshot {
 
 let cachedKey: Awaited<ReturnType<typeof importPKCS8>> | null = null;
 
+function normalizePemFromEnv(raw: string): string {
+  return raw.trim().replace(/\\n/g, "\n");
+}
+
 async function getPrivateKey(): Promise<Awaited<ReturnType<typeof importPKCS8>> | null> {
   if (cachedKey) return cachedKey;
   const env = getEnv();
-  if (!env.APPLE_TEAM_ID || !env.APPLE_SERVICE_ID || !env.APPLE_KEY_ID || !env.APPLE_PRIVATE_KEY_PATH) {
+  if (!env.APPLE_TEAM_ID || !env.APPLE_SERVICE_ID || !env.APPLE_KEY_ID) {
     return null;
   }
-  const pem = await readFile(env.APPLE_PRIVATE_KEY_PATH, "utf8");
+  let pem: string;
+  if (env.APPLE_PRIVATE_KEY) {
+    pem = normalizePemFromEnv(env.APPLE_PRIVATE_KEY);
+  } else if (env.APPLE_PRIVATE_KEY_PATH) {
+    pem = await readFile(env.APPLE_PRIVATE_KEY_PATH, "utf8");
+  } else {
+    return null;
+  }
   cachedKey = await importPKCS8(pem, "ES256");
   return cachedKey;
 }
