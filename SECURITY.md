@@ -21,7 +21,7 @@ Report vulnerabilities privately to the repository maintainers (do not open publ
 ## Edge device
 
 - Use HTTPS for `CLOUD_BASE_URL` in production.
-- GPS is required for fleet geometry; mock GPS is for development only.
+- Accurate GNSS is required for fleet geometry; Wi-Fi geolocation is coarse only.
 
 ## Privacy and retention
 

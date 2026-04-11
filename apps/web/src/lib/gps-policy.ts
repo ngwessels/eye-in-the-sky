@@ -7,6 +7,32 @@ export function applyGpsSnapshotToStation(
   gps: GpsSnapshot,
 ): Partial<StationDoc> {
   const env = getEnv();
+  const source = gps.position_source ?? "gnss";
+
+  if (source === "wifi") {
+    let quality_tier = station.quality_tier;
+    let tier_reasons = [...(station.tier_reasons ?? [])];
+    quality_tier = "gps_degraded";
+    tier_reasons = Array.from(new Set([...tier_reasons, "gps_degraded"]));
+    return {
+      location: {
+        lat: gps.lat,
+        lon: gps.lon,
+        alt: gps.alt_msl,
+      },
+      location_source: "wifi",
+      gps: {
+        fix_type: "wifi",
+        degraded: true,
+        last_fix_at: new Date(gps.observedAt),
+        accuracy_m: gps.accuracy_m,
+      },
+      quality_tier,
+      tier_reasons,
+      lastSeenAt: new Date(),
+    };
+  }
+
   const hdop = gps.hdop ?? 99;
   const sats = gps.sat_count ?? 0;
   const degraded =

@@ -25,6 +25,10 @@ export const gpsSnapshotSchema = z.object({
   sat_count: z.number().int().nonnegative().optional(),
   fix_type: z.enum(["none", "2d", "3d", "dgps", "rtk"]).or(z.string()),
   observedAt: z.string().datetime(),
+  /** Omitted or `"gnss"` = satellite fix; `"wifi"` = Wi-Fi geolocation (coarse). */
+  position_source: z.enum(["gnss", "wifi"]).optional(),
+  /** Circular accuracy (m), e.g. from Mozilla geolocate `accuracy`. */
+  accuracy_m: z.number().positive().optional(),
 });
 
 export const telemetryReadingSchema = z.object({
@@ -91,9 +95,18 @@ export const calibrationValidationOutputSchema = z.object({
   notes: z.string().optional(),
 });
 
+/** Vision + ephemeris: horizontal boresight true azimuth (clockwise from true north). */
+export const sunCalibrationOutputSchema = z.object({
+  boresight_true_azimuth_deg: z.number(),
+  confidence: z.number().min(0).max(1),
+  sun_visible: z.boolean(),
+  notes: z.string().optional(),
+});
+
 export type AnalysisOutput = z.infer<typeof analysisOutputSchema>;
 export type GpsSnapshot = z.infer<typeof gpsSnapshotSchema>;
 export type QualityTier = z.infer<typeof qualityTierSchema>;
 export type CalibrationValidationOutput = z.infer<
   typeof calibrationValidationOutputSchema
 >;
+export type SunCalibrationOutput = z.infer<typeof sunCalibrationOutputSchema>;

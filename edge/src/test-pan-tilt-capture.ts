@@ -31,7 +31,7 @@ async function main() {
   let uploadN = 0;
 
   console.log("Pan/tilt + capture upload test (presign → S3 PUT → finalize)");
-  console.log("  PAN_TILT_DRIVER=", config.panTiltDriver);
+  console.log("  PAN_TILT_DRIVER=", config.panTiltDriver, " resolved=", panTilt.panTiltBackend);
   console.log("  Capture mode:", config.panTiltCaptureMode);
   if (config.panTiltCaptureMode === "sparse") {
     console.log(
@@ -46,14 +46,14 @@ async function main() {
   console.log(
     "  Real camera path:",
     !config.mockCamera,
-    "(MOCK_CAMERA=0 → true; requires CAPTURE_STILL_CMD for uploads)",
+    "(unset MOCK_CAMERA or false → true; requires CAPTURE_STILL_CMD when not using mock)",
   );
   console.log(
     "  Image source:",
     cmd
       ? "CAPTURE_STILL_CMD (stdout JPEG)"
       : config.mockCamera
-        ? "built-in tiny mock JPEG (mock mode and no CAPTURE_STILL_CMD)"
+        ? "built-in tiny mock JPEG (MOCK_CAMERA=1 and no CAPTURE_STILL_CMD)"
         : "will fail until CAPTURE_STILL_CMD is set",
   );
   console.log("  trace_id (all uploads this run):", traceId);

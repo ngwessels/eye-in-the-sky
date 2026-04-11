@@ -93,6 +93,7 @@ export async function uploadStationCapture(
   return { captureId: presign.captureId, s3Key: presign.s3Key };
 }
 
+/** Pipeline testing only — enable with `MOCK_CAMERA=1`. */
 export async function uploadMockCapture(
   opts: StationCaptureUploadOpts = {},
 ): Promise<{ captureId: string; s3Key: string }> {

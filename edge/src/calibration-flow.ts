@@ -9,9 +9,16 @@ type Command = {
   trace_id?: string;
 };
 
+function delayMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /** Multi-step self-calibration: progress heartbeats + multiple calibration frames + server AI validation keys. */
 export async function runCalibrationSequence(cmd: Command): Promise<void> {
   const keys: string[] = [];
+
+  await panTilt.safeHome();
+  await delayMs(config.calibrationHomeSettleMs);
 
   const phases = [
     { phase: "sweep_start", percent: 5 },
@@ -49,7 +56,7 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
       north_offset_deg: 0,
       horizon_deg: 0,
       confidence: 0.72,
-      method: ["mock_grid_sweep", "multi_frame"],
+      method: ["pan_tilt_home_settle", "multi_frame"],
       calibration_s3_keys: keys,
     }),
   });

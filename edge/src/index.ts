@@ -1,11 +1,18 @@
+import type { GpsSnapshot } from "@eye/shared";
 import { config } from "./config.js";
 import { stationFetch } from "./http.js";
-import { readGpsSnapshot } from "./gps.js";
+import { resolveTelemetryPositionSnapshot } from "./position-snapshot.js";
 import { getJpegForRealCamera } from "./capture-jpeg.js";
 import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
 import * as panTilt from "./pan-tilt/index.js";
+import { normalizeAzimuthDeg } from "@eye/shared";
+import {
+  getMountNorthOffsetDeg,
+  setMountNorthOffsetFromCloud,
+  setMountTiltOffsetFromCloud,
+} from "./mount-settings-cache.js";
 
 type Command = {
   commandId: string;
@@ -14,8 +21,29 @@ type Command = {
   trace_id?: string;
 };
 
+/** Map geographic azimuth [0, 360) to mount pan [-180, 180] before driver clamp. */
+function azimuthToPanDeg(azimuthDeg: number): number {
+  const a = ((azimuthDeg % 360) + 360) % 360;
+  return a > 180 ? a - 360 : a;
+}
+
+/** Commanded true-north azimuth (clockwise) to logical mount pan given calibration.north_offset_deg. */
+function geographicAzimuthToMountPanDeg(geoAzDeg: number, northOffsetDeg: number): number {
+  const mountAz = normalizeAzimuthDeg(geoAzDeg - northOffsetDeg);
+  return azimuthToPanDeg(mountAz);
+}
+
+/** Latest fix from start of each poll cycle (GNSS preferred, else cached Wi-Fi MLS). */
+let latestPositionSnapshot: GpsSnapshot | undefined;
+
+function isPositionBadForAim(gps: GpsSnapshot | undefined): boolean {
+  if (!gps || gps.fix_type === "none") return true;
+  if (gps.position_source === "wifi" && !config.allowWifiForAim) return true;
+  return false;
+}
+
 async function sendTelemetry() {
-  const gps = readGpsSnapshot();
+  const gps = latestPositionSnapshot;
   const readings = await collectSensorReadings();
   const body: Record<string, unknown> = {
     readings,
@@ -42,7 +70,18 @@ async function pollCommands() {
     console.error("poll failed", res.status, await res.text());
     return;
   }
-  const data = (await res.json()) as { commands: Command[] };
+  const data = (await res.json()) as {
+    commands: Command[];
+    mount?: { tilt_offset_deg?: number; north_offset_deg?: number };
+  };
+  const tiltOff = data.mount?.tilt_offset_deg;
+  if (tiltOff != null && Number.isFinite(tiltOff)) {
+    setMountTiltOffsetFromCloud(tiltOff);
+  }
+  const northOff = data.mount?.north_offset_deg;
+  if (northOff != null && Number.isFinite(northOff)) {
+    setMountNorthOffsetFromCloud(northOff);
+  }
   for (const cmd of data.commands) {
     await handleCommand(cmd);
   }
@@ -61,8 +100,8 @@ async function ack(
 }
 
 async function handleCommand(cmd: Command) {
-  const gps = readGpsSnapshot();
-  const gpsBad = !gps || gps.fix_type === "none";
+  const gps = latestPositionSnapshot;
+  const gpsBad = isPositionBadForAim(gps);
 
   try {
     switch (cmd.type) {
@@ -77,7 +116,8 @@ async function handleCommand(cmd: Command) {
         }
         const az = Number(cmd.payload.azimuthDeg);
         const el = Number(cmd.payload.elevationDeg);
-        await panTilt.applyAbsolute(az, el);
+        const pan = geographicAzimuthToMountPanDeg(az, getMountNorthOffsetDeg());
+        await panTilt.applyAbsolute(pan, el);
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       }
@@ -120,15 +160,42 @@ async function handleCommand(cmd: Command) {
 }
 
 async function loop() {
+  latestPositionSnapshot = await resolveTelemetryPositionSnapshot();
   await sendTelemetry();
   await pollCommands();
+}
+
+async function pullMountSettingsOnce() {
+  try {
+    const res = await stationFetch("/api/stations/me/mount", { method: "GET" });
+    if (!res.ok) return;
+    const j = (await res.json()) as {
+      mount_tilt_offset_deg?: number;
+      north_offset_deg?: number;
+    };
+    if (typeof j.mount_tilt_offset_deg === "number" && Number.isFinite(j.mount_tilt_offset_deg)) {
+      setMountTiltOffsetFromCloud(j.mount_tilt_offset_deg);
+    }
+    if (typeof j.north_offset_deg === "number" && Number.isFinite(j.north_offset_deg)) {
+      setMountNorthOffsetFromCloud(j.north_offset_deg);
+    }
+  } catch {
+    /* offline or transient */
+  }
 }
 
 console.log("Eye in the Sky edge agent starting", {
   cloud: config.cloudBaseUrl,
   pollMs: config.commandPollIntervalMs,
-  gpsMock: config.gpsMock,
+  panTiltDriver: config.panTiltDriver,
+  panTiltBackend: panTilt.panTiltBackend,
+  mockCamera: config.mockCamera,
+  wifiPositioning: config.wifiPositioningEnabled,
+  allowWifiForAim: config.allowWifiForAim,
 });
 
-void loop();
+void (async () => {
+  await pullMountSettingsOnce();
+  await loop();
+})();
 setInterval(() => void loop(), config.commandPollIntervalMs);

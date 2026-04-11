@@ -43,6 +43,9 @@ export async function GET(request: Request) {
     .limit(20)
     .toArray();
 
+  const tiltOff = station.calibration?.mount_tilt_offset_deg ?? 0;
+  const northOff = station.calibration?.north_offset_deg ?? 0;
+
   return NextResponse.json({
     commands: cmds.map((c) => ({
       commandId: c.commandId,
@@ -52,5 +55,9 @@ export async function GET(request: Request) {
       expiresAt: c.expiresAt.toISOString(),
       trace_id: c.trace_id,
     })),
+    mount: {
+      tilt_offset_deg: Number.isFinite(tiltOff) ? tiltOff : 0,
+      north_offset_deg: Number.isFinite(northOff) ? northOff : 0,
+    },
   });
 }

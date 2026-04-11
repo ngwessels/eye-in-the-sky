@@ -95,7 +95,7 @@ async function jpegFromShell(cmd: string): Promise<Buffer> {
 }
 
 /**
- * Real still: requires `CAPTURE_STILL_CMD` (shell; JPEG bytes on stdout). Used when `MOCK_CAMERA=0`.
+ * Real still: requires `CAPTURE_STILL_CMD` (shell; JPEG bytes on stdout). Default unless `MOCK_CAMERA=1`.
  *
  * Example (Pi): `rpicam-still` or `libcamera-still` … `-o -` (see edge/.env.example).
  */
@@ -103,7 +103,8 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
   const cmd = buildCaptureShellCommand();
   if (!cmd) {
     throw new Error(
-      "MOCK_CAMERA=0 requires CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout. " +
+      "Set CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout " +
+        "(or set MOCK_CAMERA=1 for a tiny test JPEG only). " +
         "Example: rpicam-still -e jpg -n --immediate --width 1280 --height 720 -o -",
     );
   }
@@ -111,8 +112,8 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
 }
 
 /**
- * Used by `test-pan-tilt-capture`: same rules as the agent — if `MOCK_CAMERA=0`, requires
- * `CAPTURE_STILL_CMD` (no silent fallback to the tiny mock JPEG).
+ * Used by `test-pan-tilt-capture`: prefers `CAPTURE_STILL_CMD` when set; otherwise `MOCK_CAMERA=1` uses
+ * the tiny mock JPEG; without either, errors (same as the agent).
  */
 export async function getJpegForUpload(): Promise<Buffer> {
   const cmd = buildCaptureShellCommand();

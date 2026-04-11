@@ -1,17 +1,7 @@
-import type { SensorReading } from "./types.js";
-import {
-  MockBme280Driver,
-  MockLightningDriver,
-  MockRainDriver,
-  MockWindDriver,
-} from "./mock-drivers.js";
+import type { SensorDriver, SensorReading } from "./types.js";
 
-const drivers = [
-  new MockBme280Driver(),
-  new MockRainDriver(),
-  new MockWindDriver(),
-  new MockLightningDriver(),
-];
+/** Register real hardware drivers here. No mock/env-synthesized readings are sent. */
+const drivers: SensorDriver[] = [];
 
 export async function collectSensorReadings(): Promise<SensorReading[]> {
   const all: SensorReading[] = [];

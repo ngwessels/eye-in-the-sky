@@ -11,7 +11,7 @@ Firmware for an Arduino-class board that drives an **I²C PCA9685** (for example
 
 If the Pi cannot use **USB** to the Arduino, use **GPIO UART** on the Pi and set e.g. `PAN_TILT_SERIAL_PATH=/dev/serial0`. Full steps: [RASPBERRY_PI.md — section 5.1](../../../RASPBERRY_PI.md#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi).
 
-If the **PCA9685 is wired only to the Pi’s I²C** (no Arduino), use **`PAN_TILT_DRIVER=pca9685`** on the Pi (see `edge/.env.example` for `PAN_TILT_I2C_BUS` / `PAN_TILT_PCA9685_ADDR`); the Arduino sketch is not used in that layout.
+If the **PCA9685 is wired only to the Pi’s I²C** (no Arduino), **default `auto`** will use the Pi **`pca9685`** driver when the I²C probe succeeds (see `edge/.env.example` for `PAN_TILT_I2C_BUS` / `PAN_TILT_PCA9685_ADDR`). Set **`PAN_TILT_DRIVER=pca9685`** to force it; the Arduino sketch is not used in that layout.
 
 Upstream PWM math is aligned with [ArduCAM/PCA9685](https://github.com/ArduCAM/PCA9685) (`example/rpi/PCA9685.c`). That repo is mainly Pi C examples; this sketch ports the same register/pulse logic to **Arduino `Wire`**.
 

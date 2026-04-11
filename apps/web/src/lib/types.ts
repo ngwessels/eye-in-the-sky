@@ -28,13 +28,15 @@ export interface StationDoc {
   createdAt: Date;
   lastSeenAt: Date;
   location?: { lat: number; lon: number; alt?: number };
-  location_source: "gps";
+  location_source: "gps" | "wifi";
   gps: {
     fix_type: string;
     hdop?: number;
     sat_count?: number;
     last_fix_at?: Date;
     degraded: boolean;
+    /** Wi-Fi / MLS circular accuracy (m), when known. */
+    accuracy_m?: number;
   };
   capabilities: {
     sensors: string[];
@@ -44,6 +46,10 @@ export interface StationDoc {
     state: "pending" | "ready" | "degraded";
     north_offset_deg?: number;
     horizon_deg?: number;
+    /** Added to commanded elevation (deg) on the edge before clamp/invert; persisted, not .env. */
+    mount_tilt_offset_deg?: number;
+    /** True after first bootstrap `run_calibration` was enqueued from telemetry. */
+    bootstrap_calibration_enqueued?: boolean;
     confidence: number;
     updatedAt?: Date;
     method: string[];
@@ -109,4 +115,7 @@ export interface CaptureDoc {
   calibration_analysis_model?: string;
   calibration_analyzedAt?: Date;
   view?: CaptureViewDoc;
+  /** Raw mount angles at finalize (for sun calibration); view may include stale north_offset. */
+  mount_pan_deg?: number;
+  mount_tilt_deg?: number;
 }

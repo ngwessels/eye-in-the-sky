@@ -1,5 +1,6 @@
 import { openPromisified, type PromisifiedBus } from "i2c-bus";
 import { config } from "../config.js";
+import { logicalToDrivePan, logicalToDriveTilt } from "./mount-mapping.js";
 import type { PanTiltDriver, PanTiltPose } from "./types.js";
 
 /** Matches `pan-tilt-bridge.ino` — ArduCAM-style channel map (tilt=0, pan=1). */
@@ -103,10 +104,12 @@ export function createPca9685PanTilt(): PanTiltDriver {
     return Math.round(u * (outHi - outLo) + outLo);
   }
 
-  async function drivePose(panDeg: number, tiltDeg: number) {
+  async function drivePose(panLogical: number, tiltLogical: number) {
     const b = await busReady();
-    await setServoDegree(b, addr, SERVO_TILT_CH, mapTiltToServo(tiltDeg));
-    await setServoDegree(b, addr, SERVO_PAN_CH, mapPanToServo(panDeg));
+    const panD = logicalToDrivePan(panLogical);
+    const tiltD = logicalToDriveTilt(tiltLogical);
+    await setServoDegree(b, addr, SERVO_TILT_CH, mapTiltToServo(tiltD));
+    await setServoDegree(b, addr, SERVO_PAN_CH, mapPanToServo(panD));
   }
 
   return {

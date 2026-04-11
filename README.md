@@ -8,7 +8,7 @@ Open-source weather camera mesh: Raspberry Pi **edge** agents (Node.js) upload s
 |------|-------------|
 | `apps/web` | Next.js App Router — station APIs, crons, orchestrator |
 | `packages/shared` | Zod schemas and shared types |
-| `edge` | Node.js station agent (mock camera/GPS for dev) |
+| `edge` | Node.js station agent (telemetry, commands, captures; opt-in mocks for testing) |
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ Step-by-step Pi setup (OS, Node, systemd, GPS, camera notes): **[RASPBERRY_PI.md
 
 ## Hardware
 
-See [RASPBERRY_PI.md](./RASPBERRY_PI.md) and the project plan for Arducam 64MP, pan/tilt, USB/UART GPS, and optional BME280 / rain / wind / lightning. The stock `edge` agent uses **mock** camera and **GPS_MOCK** until you wire real drivers.
+See [RASPBERRY_PI.md](./RASPBERRY_PI.md) and the project plan for Arducam 64MP, pan/tilt, USB/UART GPS, and optional BME280 / rain / wind / lightning. The stock `edge` agent sends **no** environmental sensor readings until you add real drivers in `edge/src/sensors/collect.ts`. It does **not** send a mock JPEG unless you set **`MOCK_CAMERA=1`**. GNSS comes from code you add in `gps.ts`; without it, use **`WIFI_POSITIONING=1`** for coarse fixes. Use **`CAPTURE_STILL_CMD`** for real stills.
 
 ## Privacy
 

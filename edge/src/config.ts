@@ -6,13 +6,16 @@ function req(name: string): string {
   return v;
 }
 
-const panTiltDriverRaw = (process.env.PAN_TILT_DRIVER ?? "mock").toLowerCase();
-const panTiltDriver =
+/** Requested pan/tilt backend; `auto` probes I²C then uses serial path if set, else mock. */
+const panTiltDriverRaw = (process.env.PAN_TILT_DRIVER ?? "auto").toLowerCase().trim();
+const panTiltDriver: "auto" | "serial" | "pca9685" | "mock" =
   panTiltDriverRaw === "serial"
     ? "serial"
     : panTiltDriverRaw === "pca9685"
       ? "pca9685"
-      : "mock";
+      : panTiltDriverRaw === "mock"
+        ? "mock"
+        : "auto";
 
 function parseI2cAddr(raw: string | undefined, defaultDec: number): number {
   if (raw === undefined || raw.trim() === "") return defaultDec;
@@ -21,16 +24,46 @@ function parseI2cAddr(raw: string | undefined, defaultDec: number): number {
   return parseInt(t, 10);
 }
 
+function envBool(raw: string | undefined): boolean {
+  if (raw === undefined || raw.trim() === "") return false;
+  const t = raw.trim().toLowerCase();
+  return t === "1" || t === "true" || t === "yes";
+}
+
 export const config = {
   cloudBaseUrl: req("CLOUD_BASE_URL").replace(/\/$/, ""),
   stationApiKey: req("STATION_API_KEY"),
   commandPollIntervalMs: Number(process.env.COMMAND_POLL_INTERVAL_MS ?? 180_000),
-  gpsMock: process.env.GPS_MOCK === "1" || process.env.GPS_MOCK === "true",
-  mockCamera: process.env.MOCK_CAMERA !== "0",
+  /** Wi-Fi scan + Mozilla Location Service when GNSS has no fix (see RASPBERRY_PI.md). */
+  wifiPositioningEnabled: envBool(process.env.WIFI_POSITIONING),
+  wifiScanIface: (process.env.WIFI_SCAN_IFACE ?? "wlan0").trim(),
+  /** Reuse last Wi-Fi fix for this long (ms) to avoid hammering MLS. Default 10 minutes. */
+  wifiGeolocMinIntervalMs: Math.max(
+    60_000,
+    Number(process.env.WIFI_GEOLOC_MIN_INTERVAL_MS ?? 600_000),
+  ),
+  mozillaLocationApiKey: (process.env.MOZILLA_LOCATION_API_KEY ?? "").trim() || undefined,
+  /** Run `sudo -n iw ...` when a plain `iw` scan fails (e.g. permission denied). */
+  wifiIwUseSudo: envBool(process.env.WIFI_IW_USE_SUDO),
+  /**
+   * Optional: shell command that prints either `iw dev … scan` text or lines `bssid_dbm` as
+   * `aa:bb:cc:dd:ee:ff -72` (one AP per line).
+   */
+  wifiScanShellCmd: (process.env.WIFI_SCAN_CMD ?? "").trim() || undefined,
+  /**
+   * When false, `aim_absolute` is rejected if the only position fix is Wi-Fi (telemetry still sends it).
+   * Default: allow coarse Wi-Fi position for slewing.
+   */
+  allowWifiForAim:
+    process.env.ALLOW_WIFI_FOR_AIM !== "0" &&
+    process.env.ALLOW_WIFI_FOR_AIM !== "false",
+  /** Tiny JPEG uploads for pipeline testing (`MOCK_CAMERA=1`). Otherwise requires `CAPTURE_STILL_CMD`. */
+  mockCamera: envBool(process.env.MOCK_CAMERA),
   panMin: Number(process.env.PAN_MIN_DEG ?? -180),
   panMax: Number(process.env.PAN_MAX_DEG ?? 180),
   tiltMin: Number(process.env.TILT_MIN_DEG ?? -10),
   tiltMax: Number(process.env.TILT_MAX_DEG ?? 90),
+  /** `auto` (default): probe I²C for PCA9685, else serial if path set, else mock. */
   panTiltDriver,
   panTiltSerialPath: process.env.PAN_TILT_SERIAL_PATH ?? "",
   panTiltSerialBaud: Number(process.env.PAN_TILT_SERIAL_BAUD ?? 115200),
@@ -41,6 +74,9 @@ export const config = {
   panTiltServoPanOutMax: Number(process.env.PAN_TILT_SERVO_PAN_OUT_MAX ?? 180),
   panTiltServoTiltOutMin: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MIN ?? 15),
   panTiltServoTiltOutMax: Number(process.env.PAN_TILT_SERVO_TILT_OUT_MAX ?? 145),
+  /** Mirror pan/tilt within logical min/max before PWM map (hardware mounted reversed). */
+  panTiltInvertPan: envBool(process.env.PAN_TILT_INVERT_PAN),
+  panTiltInvertTilt: envBool(process.env.PAN_TILT_INVERT_TILT),
   /** `npm run test-pan-tilt`: pause after each pose (ms). */
   panTiltTestDwellMs: Number(process.env.PAN_TILT_TEST_DWELL_MS ?? 2200),
   /** `npm run test-pan-tilt`: segments per sweep (positions = segments + 1). */
@@ -55,4 +91,6 @@ export const config = {
     1,
     Math.floor(Number(process.env.PAN_TILT_CAPTURE_SWEEP_STRIDE ?? 4)),
   ),
+  /** After `safe_home` / pan 0 tilt 0 before calibration captures (ms). */
+  calibrationHomeSettleMs: Math.max(500, Number(process.env.CALIBRATION_HOME_SETTLE_MS ?? 2500)),
 };

@@ -7,6 +7,7 @@ import { getEnv } from "@/lib/env";
 import { applyGpsSnapshotToStation } from "@/lib/gps-policy";
 import { validateTelemetryReadings } from "@/lib/telemetry-validate";
 import { recomputeQualityTier } from "@/lib/tier";
+import { maybeEnqueueBootstrapCalibration } from "@/lib/calibration-bootstrap";
 import type { StationDoc } from "@/lib/types";
 
 const MAX_ANOMALY_FLAGS = 24;
@@ -62,11 +63,8 @@ export async function POST(request: Request) {
     Object.assign(update, gpsPatch);
   }
 
-  const sensorTypes = new Set(station.capabilities?.sensors ?? []);
-  for (const r of readings) {
-    sensorTypes.add(r.type);
-  }
-  update["capabilities.sensors"] = [...sensorTypes];
+  const sensorTypes = [...new Set(readings.map((r) => r.type))].sort();
+  update["capabilities.sensors"] = sensorTypes;
 
   let anomalyFlags = [...(station.sensor_anomaly_flags ?? [])];
   if (validation.anomalies.length > 0) {
@@ -95,6 +93,7 @@ export async function POST(request: Request) {
         },
       },
     );
+    await maybeEnqueueBootstrapCalibration(db, station.stationId);
   }
 
   if (readings.length > 0) {

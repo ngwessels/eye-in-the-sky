@@ -51,8 +51,6 @@ function resolveCaptureView(
     mount_tilt_deg?: number;
   },
 ): CaptureViewDoc | undefined {
-  const fin = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
-
   if (fin(d.azimuth_true_deg)) {
     const az = normalizeAzimuthDeg(d.azimuth_true_deg);
     const view: CaptureViewDoc = {
@@ -81,6 +79,10 @@ function resolveCaptureView(
   }
 
   return undefined;
+}
+
+function fin(n: unknown): n is number {
+  return typeof n === "number" && Number.isFinite(n);
 }
 
 function extForCt(ct: string): string {
@@ -208,6 +210,8 @@ export async function POST(request: Request) {
       sequence: seq,
       clock_untrusted: captureClockUntrusted,
       ...(view ? { view } : {}),
+      ...(fin(d.mount_pan_deg) ? { mount_pan_deg: d.mount_pan_deg } : {}),
+      ...(fin(d.mount_tilt_deg) ? { mount_tilt_deg: d.mount_tilt_deg } : {}),
     };
 
     await db.collection<CaptureDoc>("captures").insertOne(doc);

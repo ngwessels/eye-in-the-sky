@@ -1,5 +1,6 @@
 import { SerialPort } from "serialport";
 import { config } from "../config.js";
+import { logicalToDrivePan, logicalToDriveTilt } from "./mount-mapping.js";
 import type { PanTiltDriver, PanTiltPose } from "./types.js";
 
 function clamp(v: number, lo: number, hi: number) {
@@ -9,7 +10,9 @@ function clamp(v: number, lo: number, hi: number) {
 export function createSerialPanTilt(): PanTiltDriver {
   const path = config.panTiltSerialPath?.trim();
   if (!path) {
-    throw new Error("PAN_TILT_SERIAL_PATH is required when PAN_TILT_DRIVER=serial");
+    throw new Error(
+      "PAN_TILT_SERIAL_PATH is required for the serial pan/tilt driver (PAN_TILT_DRIVER=serial or auto with serial path)",
+    );
   }
 
   let pan = 0;
@@ -61,21 +64,22 @@ export function createSerialPanTilt(): PanTiltDriver {
       pan = 0;
       tilt = 0;
       await ensureOpen();
-      await writeLine("HOME");
+      // Use SET with the same drive mapping as applyAbsolute so HOME matches mount trim/invert.
+      await writeLine(`SET ${logicalToDrivePan(0)} ${logicalToDriveTilt(0)}`);
     },
 
     async applyAbsolute(azimuthDeg: number, elevationDeg: number): Promise<void> {
       pan = clamp(azimuthDeg, config.panMin, config.panMax);
       tilt = clamp(elevationDeg, config.tiltMin, config.tiltMax);
       await ensureOpen();
-      await writeLine(`SET ${pan} ${tilt}`);
+      await writeLine(`SET ${logicalToDrivePan(pan)} ${logicalToDriveTilt(tilt)}`);
     },
 
     async applyDelta(deltaPanDeg: number, deltaTiltDeg: number): Promise<void> {
       pan = clamp(pan + deltaPanDeg, config.panMin, config.panMax);
       tilt = clamp(tilt + deltaTiltDeg, config.tiltMin, config.tiltMax);
       await ensureOpen();
-      await writeLine(`SET ${pan} ${tilt}`);
+      await writeLine(`SET ${logicalToDrivePan(pan)} ${logicalToDriveTilt(tilt)}`);
     },
   };
 }
