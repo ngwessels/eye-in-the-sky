@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@eye/shared": "*",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

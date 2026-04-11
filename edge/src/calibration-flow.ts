@@ -1,7 +1,7 @@
 import { stationFetch } from "./http.js";
 import { uploadMockCapture } from "./upload-capture.js";
 import { config } from "./config.js";
-import * as panTilt from "./pan-tilt-mock.js";
+import * as panTilt from "./pan-tilt/index.js";
 
 type Command = {
   commandId: string;

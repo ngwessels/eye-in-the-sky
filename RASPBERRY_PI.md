@@ -11,7 +11,7 @@ This guide walks through running the **edge agent** on a Raspberry Pi so it regi
 | Network | Ethernet or stable Wi‑Fi; Pi must reach your `CLOUD_BASE_URL` over **HTTPS** in production. |
 | GNSS GPS | USB dongle (u-blox, etc.) or UART module; **clear sky** view for a 3D fix. |
 | Camera | Arducam 64MP Hawkeye (or other) per your build; requires vendor / `libcamera` stack on the Pi. |
-| Pan/tilt | Arducam (or similar) mount; control is usually **UART** or **GPIO PWM** (not yet wired in the stock Node agent—see [Hardware integration](#hardware-integration-not-yet-in-stock-agent)). |
+| Pan/tilt | Arducam (or similar) mount; optional **Arduino + PCA9685** serial bridge is supported (see `edge/firmware/pan-tilt-bridge` and `PAN_TILT_DRIVER` below). |
 | Cloud already running | Vercel (or other) hosting `apps/web`, with MongoDB, S3, and a **station API key** from registration. |
 
 ## 1. Install Raspberry Pi OS
@@ -103,6 +103,9 @@ nano .env   # or use your editor
 | `COMMAND_POLL_INTERVAL_MS` | `180000`–`300000` (3–5 minutes) | Any |
 | `GPS_MOCK` | **`0` or unset** — use real GPS | `1` for testing without GPS |
 | `MOCK_CAMERA` | **`0`** when using real capture scripts | `1` uploads a tiny JPEG |
+| `PAN_TILT_DRIVER` | `mock` (default) or `serial` for an Arduino PCA9685 bridge | Usually `mock` on a laptop |
+| `PAN_TILT_SERIAL_PATH` | Required when `serial`, e.g. `/dev/ttyACM0` or `/dev/ttyUSB0` | — |
+| `PAN_TILT_SERIAL_BAUD` | Optional; default `115200` | Must match firmware |
 
 Optional mock sensors (only for bench testing):
 
@@ -156,13 +159,15 @@ sudo systemctl restart eye-in-the-sky-edge.service
 
 ## 7. USB permissions (GPS / serial)
 
-If you add a USB serial GPS:
+If you use USB serial devices (GNSS, **Arduino pan/tilt bridge**, etc.):
 
 ```bash
 sudo usermod -aG dialout $USER
 # log out and back in
 ls -l /dev/ttyACM0
 ```
+
+Pan/tilt over serial: flash [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino), set `PAN_TILT_DRIVER=serial` and `PAN_TILT_SERIAL_PATH` in `edge/.env`. The sketch’s PWM behavior follows [ArduCAM/PCA9685](https://github.com/ArduCAM/PCA9685) register timing; install nothing extra on the Pi beyond `npm install` (the edge agent uses the `serialport` package).
 
 ## 8. Camera notes (Arducam / libcamera)
 
@@ -181,7 +186,7 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 
 | Component | Stock agent | Next step on Pi |
 |-----------|-------------|------------------|
-| Pan/tilt | Mock angles in memory | `serialport` or GPIO library + Arducam controller protocol |
+| Pan/tilt | Mock by default; optional `PAN_TILT_DRIVER=serial` + Arduino firmware | [`edge/firmware/pan-tilt-bridge`](edge/firmware/pan-tilt-bridge) + `serialport` |
 | Real GPS | Mock unless you extend `gps.ts` | Read NMEA from serial, build `GpsSnapshot` |
 | BME280 / I2C | Mock env vars | `i2c-bus` or Python sidecar; push readings into telemetry |
 | Lightning AS3935 | Mock | Same pattern: driver → telemetry readings |

@@ -4,7 +4,7 @@ import { readGpsSnapshot } from "./gps.js";
 import { uploadMockCapture } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
-import * as panTilt from "./pan-tilt-mock.js";
+import * as panTilt from "./pan-tilt/index.js";
 
 type Command = {
   commandId: string;
@@ -66,7 +66,7 @@ async function handleCommand(cmd: Command) {
   try {
     switch (cmd.type) {
       case "safe_home":
-        panTilt.safeHome();
+        await panTilt.safeHome();
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       case "aim_absolute": {
@@ -76,14 +76,14 @@ async function handleCommand(cmd: Command) {
         }
         const az = Number(cmd.payload.azimuthDeg);
         const el = Number(cmd.payload.elevationDeg);
-        panTilt.applyAbsolute(az, el);
+        await panTilt.applyAbsolute(az, el);
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       }
       case "aim_delta": {
         const dp = Number(cmd.payload.deltaPanDeg ?? 0);
         const dt = Number(cmd.payload.deltaTiltDeg ?? 0);
-        panTilt.applyDelta(dp, dt);
+        await panTilt.applyDelta(dp, dt);
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       }
