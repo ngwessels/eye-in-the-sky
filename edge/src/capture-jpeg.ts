@@ -14,6 +14,20 @@ const CAPTURE_CLI_HINT =
   "(then try `rpicam-still` or `libcamera-still`; on older OS use `raspistill` from libraspberrypi-bin). " +
   "Check: command -v rpicam-still libcamera-still raspistill";
 
+let warnedAboutImmediateAf = false;
+
+function maybeWarnImmediateWithoutAf(baseCmd: string) {
+  if (warnedAboutImmediateAf) return;
+  if (!/\b--immediate\b/.test(baseCmd)) return;
+  if (/\b--autofocus-on-capture\b/.test(baseCmd) || /\b--autofocus\b/.test(baseCmd)) return;
+  warnedAboutImmediateAf = true;
+  console.warn(
+    "[edge] CAPTURE_STILL_CMD uses --immediate without --autofocus-on-capture / --autofocus. " +
+      "AF cameras (e.g. Arducam 64MP) often look blurry — remove --immediate, add -t 6000 --autofocus-on-capture, " +
+      "and raise --width/--height. See edge/.env.example.",
+  );
+}
+
 function hasExplicitQuality(cmd: string): boolean {
   return /(^|\s)-q(?:\s+|=)\d/.test(cmd) || /(^|\s)--quality(?:\s+|=)\d/.test(cmd);
 }
@@ -37,6 +51,7 @@ function parseJpegQualityForAppend(): number | null {
 function buildCaptureShellCommand(): string {
   const base = process.env.CAPTURE_STILL_CMD?.trim() ?? "";
   if (!base) return base;
+  maybeWarnImmediateWithoutAf(base);
   const q = parseJpegQualityForAppend();
   if (q === null || hasExplicitQuality(base)) return base;
   return `${base} -q ${q}`;

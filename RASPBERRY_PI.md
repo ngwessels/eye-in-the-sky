@@ -249,7 +249,9 @@ For **real** stills from a Pi camera stack, you typically:
 2. Set **`CAPTURE_STILL_CMD`** in `edge/.env` to a command that writes JPEG bytes to **stdout** (e.g. `… -o -`). With **`rpicam-still`**, use **`-e jpg`** (not `jpeg` — that encoding name is rejected). The agent appends **`-q`** for JPEG quality unless your command already includes `-q` / `--quality`; override with **`CAPTURE_JPEG_QUALITY`** (`98` = less compression; `none` = disable auto-append). Examples are in `edge/.env.example`.
 3. Upload uses the same **presign → PUT → finalize** flow as in `edge/src/upload-capture.ts`.
 
-That wiring is **hardware-specific**; keep captures under the size limits your API enforces (`MAX_CAPTURE_BYTES` on the server). Prefer resizing large 64 MP frames on the Pi before upload.
+**Blurry or “no detail” despite large files:** raising JPEG **`-q` only reduces compression artifacts**; a soft image is usually **focus or resolution**. For **Arducam 64MP AF** (and similar), **avoid `--immediate`** (it captures before autofocus). Prefer **`-t 6000`** (or several seconds) plus **`--autofocus-on-capture`**, and use a **higher still resolution** (e.g. 4624×3472 or full sensor) if RAM and **`MAX_CAPTURE_BYTES`** allow. See **`edge/.env.example`** for a recommended command line.
+
+That wiring is **hardware-specific**; keep captures under the size limits your API enforces (`MAX_CAPTURE_BYTES` on the server).
 
 ## Hardware integration (not yet in stock agent)
 
