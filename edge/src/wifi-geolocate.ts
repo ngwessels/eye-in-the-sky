@@ -40,6 +40,23 @@ export async function mozillaWifiGeolocate(
   });
 
   if (!res.ok) {
+    let bodySnippet = "";
+    try {
+      bodySnippet = (await res.text()).slice(0, 400);
+    } catch {
+      /* ignore */
+    }
+    // #region agent log
+    console.log(
+      "[eye-debug] H2 mozillaWifiGeolocate http_error",
+      JSON.stringify({
+        hypothesisId: "H2",
+        status: res.status,
+        bodySnippet,
+        apCount: wifiAccessPoints.length,
+      }),
+    );
+    // #endregion
     return null;
   }
 
@@ -49,15 +66,27 @@ export async function mozillaWifiGeolocate(
   };
   const lat = data.location?.lat;
   const lon = data.location?.lng;
-  const accuracy = data.accuracy;
+  const accuracy =
+    typeof data.accuracy === "number" && Number.isFinite(data.accuracy)
+      ? data.accuracy
+      : 500;
   if (
     typeof lat !== "number" ||
     typeof lon !== "number" ||
     !Number.isFinite(lat) ||
-    !Number.isFinite(lon) ||
-    typeof accuracy !== "number" ||
-    !Number.isFinite(accuracy)
+    !Number.isFinite(lon)
   ) {
+    // #region agent log
+    console.log(
+      "[eye-debug] H2 mozillaWifiGeolocate no_location_in_body",
+      JSON.stringify({
+        hypothesisId: "H2",
+        apCount: wifiAccessPoints.length,
+        keys: data && typeof data === "object" ? Object.keys(data) : [],
+        rawSnippet: JSON.stringify(data).slice(0, 400),
+      }),
+    );
+    // #endregion
     return null;
   }
 

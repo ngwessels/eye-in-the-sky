@@ -104,6 +104,32 @@ async function runShellScan(cmd: string): Promise<string> {
   return stdout;
 }
 
+/** Mozilla MLS (and similar) rarely resolve a fix from a single BSSID — merge in `nmcli` rows when `iw` is sparse. */
+const SPARSE_SCAN_MERGE_THRESHOLD = 2;
+
+function mergeApsByBestSignal(a: WifiAccessPoint[], b: WifiAccessPoint[]): WifiAccessPoint[] {
+  const map = new Map<string, WifiAccessPoint>();
+  for (const ap of a) {
+    map.set(ap.macAddress, ap);
+  }
+  for (const ap of b) {
+    const cur = map.get(ap.macAddress);
+    if (!cur || ap.signalStrength > cur.signalStrength) {
+      map.set(ap.macAddress, ap);
+    }
+  }
+  return [...map.values()];
+}
+
+async function maybeMergeNmcliIfSparse(aps: WifiAccessPoint[]): Promise<WifiAccessPoint[]> {
+  if (aps.length >= SPARSE_SCAN_MERGE_THRESHOLD) return aps;
+  const nmcli = await tryNmcliScan();
+  if (nmcli && nmcli.length > 0) {
+    return mergeApsByBestSignal(aps, nmcli);
+  }
+  return aps;
+}
+
 /**
  * Collect visible BSSIDs + RSSI for geolocation. Requires `iw` (and often root or `sudo -n`) on Pi.
  */
@@ -114,39 +140,46 @@ export async function scanWifiAccessPoints(): Promise<WifiAccessPoint[]> {
     try {
       const stdout = await runShellScan(config.wifiScanShellCmd);
       const simple = parseSimpleScanLines(stdout);
-      if (simple.length > 0) return simple;
-      return parseIwScanOutput(stdout);
+      const parsed = simple.length > 0 ? simple : parseIwScanOutput(stdout);
+      return await maybeMergeNmcliIfSparse(parsed);
     } catch {
       return [];
     }
   }
 
+  let aps: WifiAccessPoint[] = [];
+
   try {
     const stdout = await runIwScan(iface, false);
-    return parseIwScanOutput(stdout);
+    aps = parseIwScanOutput(stdout);
   } catch {
     if (config.wifiIwUseSudo) {
       try {
         const stdout = await runIwScan(iface, true);
-        return parseIwScanOutput(stdout);
+        aps = parseIwScanOutput(stdout);
       } catch {
-        /* fall through */
+        aps = [];
       }
     }
   }
 
-  try {
-    const { stdout } = await execFileAsync("iw", [iface, "scan"], {
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: 45_000,
-    });
-    return parseIwScanOutput(stdout);
-  } catch {
-    /* fall through */
+  if (aps.length === 0) {
+    try {
+      const { stdout } = await execFileAsync("iw", [iface, "scan"], {
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: 45_000,
+      });
+      aps = parseIwScanOutput(stdout);
+    } catch {
+      /* fall through */
+    }
   }
 
-  const nmcli = await tryNmcliScan();
-  if (nmcli && nmcli.length > 0) return nmcli;
+  if (aps.length === 0) {
+    const nmcli = await tryNmcliScan();
+    if (nmcli && nmcli.length > 0) return nmcli;
+    return [];
+  }
 
-  return [];
+  return await maybeMergeNmcliIfSparse(aps);
 }
