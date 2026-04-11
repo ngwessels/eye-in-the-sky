@@ -1,5 +1,6 @@
 import type { GpsSnapshot } from "@eye/shared";
 import { config } from "./config.js";
+import { log } from "./logger.js";
 import { stationFetch } from "./http.js";
 import { resolveTelemetryPositionSnapshot } from "./position-snapshot.js";
 import { getJpegForRealCamera } from "./capture-jpeg.js";
@@ -60,14 +61,14 @@ async function sendTelemetry() {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    console.error("telemetry failed", res.status, await res.text());
+    log.error("telemetry failed", { status: res.status, body: await res.text() });
   }
 }
 
 async function pollCommands() {
   const res = await stationFetch("/api/stations/me/commands", { method: "GET" });
   if (!res.ok) {
-    console.error("poll failed", res.status, await res.text());
+    log.error("poll failed", { status: res.status, body: await res.text() });
     return;
   }
   const data = (await res.json()) as {
@@ -160,9 +161,16 @@ async function handleCommand(cmd: Command) {
 }
 
 async function loop() {
+  log.info("poll cycle starting");
   latestPositionSnapshot = await resolveTelemetryPositionSnapshot();
   await sendTelemetry();
   await pollCommands();
+  const pos = latestPositionSnapshot;
+  log.info("poll cycle complete", {
+    pollIntervalMs: config.commandPollIntervalMs,
+    fix_type: pos?.fix_type ?? "none",
+    position_source: pos?.position_source,
+  });
 }
 
 async function pullMountSettingsOnce() {
@@ -184,7 +192,7 @@ async function pullMountSettingsOnce() {
   }
 }
 
-console.log("Eye in the Sky edge agent starting", {
+log.info("Eye in the Sky edge agent ready", {
   cloud: config.cloudBaseUrl,
   pollMs: config.commandPollIntervalMs,
   panTiltDriver: config.panTiltDriver,
@@ -194,8 +202,32 @@ console.log("Eye in the Sky edge agent starting", {
   allowWifiForAim: config.allowWifiForAim,
 });
 
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandledRejection", { reason: reason instanceof Error ? reason.message : String(reason) });
+});
+
+process.on("uncaughtException", (err) => {
+  log.error("uncaughtException", { message: err.message, stack: err.stack });
+  process.exit(1);
+});
+
 void (async () => {
-  await pullMountSettingsOnce();
-  await loop();
+  try {
+    await pullMountSettingsOnce();
+    await loop();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log.error("main loop fatal", { message: msg, stack: e instanceof Error ? e.stack : undefined });
+    process.exit(1);
+  }
 })();
-setInterval(() => void loop(), config.commandPollIntervalMs);
+setInterval(() => {
+  void (async () => {
+    try {
+      await loop();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error("poll cycle error", { message: msg, stack: e instanceof Error ? e.stack : undefined });
+    }
+  })();
+}, config.commandPollIntervalMs);

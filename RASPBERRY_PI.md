@@ -63,7 +63,7 @@ Smoke test:
 ```bash
 cd ~/eye-in-the-sky
 # After .env is configured (next section):
-node edge/dist/index.js
+node edge/start.mjs
 ```
 
 For development with auto-reload on the Pi:
@@ -190,7 +190,7 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/eye-in-the-sky
 EnvironmentFile=/home/pi/eye-in-the-sky/edge/.env
-ExecStart=/usr/bin/node edge/dist/index.js
+ExecStart=/usr/bin/node edge/start.mjs
 Restart=always
 RestartSec=10
 
