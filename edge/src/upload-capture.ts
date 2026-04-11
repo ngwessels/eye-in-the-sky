@@ -1,14 +1,20 @@
 import { stationFetch } from "./http.js";
 import { MOCK_JPEG } from "./camera-mock.js";
 
-export async function uploadMockCapture(opts: {
+export type StationCaptureUploadOpts = {
   trace_id?: string;
   command_id?: string;
   kind?: "science" | "calibration";
   /** Mount pan/tilt in degrees at shutter time; server applies north_offset for true azimuth. */
   mount_pan_deg?: number;
   mount_tilt_deg?: number;
-}): Promise<{ captureId: string; s3Key: string }> {
+};
+
+/** Presign → PUT → finalize (same as cloud `capture_now` with a concrete JPEG buffer). */
+export async function uploadStationCapture(
+  imageBytes: Uint8Array | Buffer,
+  opts: StationCaptureUploadOpts = {},
+): Promise<{ captureId: string; s3Key: string }> {
   const presignRes = await stationFetch("/api/stations/me/captures", {
     method: "POST",
     body: JSON.stringify({
@@ -28,10 +34,13 @@ export async function uploadMockCapture(opts: {
     headers: { "Content-Type": string };
   };
 
+  const body = Buffer.isBuffer(imageBytes) ? imageBytes : Buffer.from(imageBytes);
+
   const put = await fetch(presign.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": "image/jpeg" },
-    body: MOCK_JPEG,
+    // Node fetch BodyInit typing is stricter than runtime (Buffer works).
+    body: body as unknown as BodyInit,
   });
   if (!put.ok) {
     throw new Error(`S3 PUT failed: ${put.status}`);
@@ -42,7 +51,7 @@ export async function uploadMockCapture(opts: {
     body: JSON.stringify({
       action: "finalize",
       captureId: presign.captureId,
-      byteSize: MOCK_JPEG.length,
+      byteSize: body.byteLength,
       capturedAt: new Date().toISOString(),
       trace_id: opts.trace_id,
       command_id: opts.command_id,
@@ -57,4 +66,10 @@ export async function uploadMockCapture(opts: {
   }
 
   return { captureId: presign.captureId, s3Key: presign.s3Key };
+}
+
+export async function uploadMockCapture(
+  opts: StationCaptureUploadOpts = {},
+): Promise<{ captureId: string; s3Key: string }> {
+  return uploadStationCapture(MOCK_JPEG, opts);
 }

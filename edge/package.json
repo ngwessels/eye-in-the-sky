@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test-pan-tilt": "tsx src/test-pan-tilt.ts",
-    "test-pan-tilt:dist": "node dist/test-pan-tilt.js"
+    "test-pan-tilt:dist": "node dist/test-pan-tilt.js",
+    "test-pan-tilt-capture": "tsx src/test-pan-tilt-capture.ts",
+    "test-pan-tilt-capture:dist": "node dist/test-pan-tilt-capture.js"
   },
   "dependencies": {
     "@eye/shared": "*",

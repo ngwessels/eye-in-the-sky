@@ -45,4 +45,14 @@ export const config = {
   panTiltTestDwellMs: Number(process.env.PAN_TILT_TEST_DWELL_MS ?? 2200),
   /** `npm run test-pan-tilt`: segments per sweep (positions = segments + 1). */
   panTiltTestSweepSteps: Math.max(2, Math.floor(Number(process.env.PAN_TILT_TEST_SWEEP_STEPS ?? 14))),
+  /**
+   * `npm run test-pan-tilt-capture`: `all` = upload at every pose (may hit API rate limits).
+   * `sparse` = every pose except sweep legs are sampled every PAN_TILT_CAPTURE_SWEEP_STRIDE stops (plus last stop).
+   */
+  panTiltCaptureMode:
+    (process.env.PAN_TILT_CAPTURE_MODE ?? "sparse").toLowerCase() === "all" ? "all" : "sparse",
+  panTiltCaptureSweepStride: Math.max(
+    1,
+    Math.floor(Number(process.env.PAN_TILT_CAPTURE_SWEEP_STRIDE ?? 4)),
+  ),
 };
