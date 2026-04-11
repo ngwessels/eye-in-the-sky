@@ -7,7 +7,19 @@ function req(name: string): string {
 }
 
 const panTiltDriverRaw = (process.env.PAN_TILT_DRIVER ?? "mock").toLowerCase();
-const panTiltDriver = panTiltDriverRaw === "serial" ? "serial" : "mock";
+const panTiltDriver =
+  panTiltDriverRaw === "serial"
+    ? "serial"
+    : panTiltDriverRaw === "pca9685"
+      ? "pca9685"
+      : "mock";
+
+function parseI2cAddr(raw: string | undefined, defaultDec: number): number {
+  if (raw === undefined || raw.trim() === "") return defaultDec;
+  const t = raw.trim();
+  if (t.startsWith("0x") || t.startsWith("0X")) return parseInt(t, 16);
+  return parseInt(t, 10);
+}
 
 export const config = {
   cloudBaseUrl: req("CLOUD_BASE_URL").replace(/\/$/, ""),
@@ -22,4 +34,6 @@ export const config = {
   panTiltDriver,
   panTiltSerialPath: process.env.PAN_TILT_SERIAL_PATH ?? "",
   panTiltSerialBaud: Number(process.env.PAN_TILT_SERIAL_BAUD ?? 115200),
+  panTiltI2cBus: Number(process.env.PAN_TILT_I2C_BUS ?? 1),
+  panTiltPca9685Addr: parseI2cAddr(process.env.PAN_TILT_PCA9685_ADDR, 0x40),
 };

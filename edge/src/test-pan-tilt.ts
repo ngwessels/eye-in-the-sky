@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import * as panTilt from "./pan-tilt/index.js";
 
 function sleep(ms: number) {
@@ -5,11 +6,10 @@ function sleep(ms: number) {
 }
 
 async function main() {
-  const driver = process.env.PAN_TILT_DRIVER ?? "mock";
   console.log("Pan/tilt hardware test (same code path as cloud commands)");
-  console.log("  PAN_TILT_DRIVER=", driver);
-  if (driver !== "serial") {
-    console.warn("  Using mock driver — set PAN_TILT_DRIVER=serial and serial path in .env for real motion.");
+  console.log("  PAN_TILT_DRIVER=", config.panTiltDriver);
+  if (config.panTiltDriver === "mock") {
+    console.warn("  Mock driver — set PAN_TILT_DRIVER=serial or pca9685 in .env for real motion.");
   }
 
   console.log("HOME");

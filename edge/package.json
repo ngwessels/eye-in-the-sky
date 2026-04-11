@@ -13,9 +13,11 @@
   "dependencies": {
     "@eye/shared": "*",
     "dotenv": "^16.4.7",
+    "i2c-bus": "^5.2.3",
     "serialport": "^13.0.0"
   },
   "devDependencies": {
+    "@types/i2c-bus": "^5.1.2",
     "@types/node": "^22.10.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

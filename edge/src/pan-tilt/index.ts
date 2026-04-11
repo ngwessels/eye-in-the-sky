@@ -1,10 +1,16 @@
 import { config } from "../config.js";
 import * as mock from "./mock.js";
+import { createPca9685PanTilt } from "./pca9685-i2c.js";
 import { createSerialPanTilt } from "./serial.js";
 import type { PanTiltDriver } from "./types.js";
 
-const driver: PanTiltDriver =
-  config.panTiltDriver === "serial" ? createSerialPanTilt() : mock;
+function createPanTiltDriver(): PanTiltDriver {
+  if (config.panTiltDriver === "serial") return createSerialPanTilt();
+  if (config.panTiltDriver === "pca9685") return createPca9685PanTilt();
+  return mock;
+}
+
+const driver: PanTiltDriver = createPanTiltDriver();
 
 export function getPose() {
   return driver.getPose();
