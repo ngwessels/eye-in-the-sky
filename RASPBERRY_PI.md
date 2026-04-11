@@ -11,7 +11,7 @@ This guide walks through running the **edge agent** on a Raspberry Pi so it regi
 | Network | Ethernet or stable Wi‑Fi; Pi must reach your `CLOUD_BASE_URL` over **HTTPS** in production. |
 | GNSS GPS | USB dongle (u-blox, etc.) or UART module; **clear sky** view for a 3D fix. |
 | Camera | Arducam 64MP Hawkeye (or other) per your build; requires vendor / `libcamera` stack on the Pi. |
-| Pan/tilt | Arducam (or similar) mount; optional **Arduino + PCA9685** serial bridge is supported (see `edge/firmware/pan-tilt-bridge` and `PAN_TILT_DRIVER` below). |
+| Pan/tilt | **PCA9685 on I2C to the Arduino** (servos); **Pi → Arduino** uses **serial** (USB or GPIO UART), not I2C. Details: [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi). |
 | Cloud already running | Vercel (or other) hosting `apps/web`, with MongoDB, S3, and a **station API key** from registration. |
 
 ## 1. Install Raspberry Pi OS
@@ -104,7 +104,7 @@ nano .env   # or use your editor
 | `GPS_MOCK` | **`0` or unset** — use real GPS | `1` for testing without GPS |
 | `MOCK_CAMERA` | **`0`** when using real capture scripts | `1` uploads a tiny JPEG |
 | `PAN_TILT_DRIVER` | `mock` (default) or `serial` for an Arduino PCA9685 bridge | Usually `mock` on a laptop |
-| `PAN_TILT_SERIAL_PATH` | Required when `serial`, e.g. `/dev/ttyACM0` or `/dev/ttyUSB0` | — |
+| `PAN_TILT_SERIAL_PATH` | Required when `serial`: USB Arduino often `/dev/ttyACM0`; **GPIO UART** often `/dev/serial0` (see §5.1). Use `/dev/serial/by-id/...` if you have several USB serial devices. | — |
 | `PAN_TILT_SERIAL_BAUD` | Optional; default `115200` | Must match firmware |
 
 Optional mock sensors (only for bench testing):
@@ -117,6 +117,52 @@ Optional mock sensors (only for bench testing):
 - Implement reading from `/dev/ttyACM0` / `/dev/serial0` and populate the same fields the API expects (`lat`, `lon`, `hdop`, `sat_count`, `fix_type`, `observedAt`) in `edge/src/gps.ts`.
 
 **NTP reporting:** the agent sends `time_quality` with each telemetry batch. Ensure the system clock is synced (step 1).
+
+### 5.1 Pan / tilt: Arduino + PCA9685 (I2C + serial to Pi)
+
+The **PCA9685 servo driver** is on **I²C** — but that bus is between the **Arduino and the PCA9685 board** (same as [ArduCAM’s wiring](https://github.com/ArduCAM/PCA9685)). The **Raspberry Pi does not use I²C** for pan/tilt in the stock edge agent.
+
+You need **two separate links**:
+
+| Link | Purpose |
+|------|--------|
+| **Arduino ↔ PCA9685** | **I²C** (SDA, SCL, GND, power). The flashed sketch uses `Wire` to drive PWM for the servos. |
+| **Raspberry Pi ↔ Arduino** | **Serial** at **115200 baud** (text lines `HOME` and `SET pan tilt`). The edge agent uses the Node `serialport` package — same code whether that serial link is **USB** or **GPIO UART**. |
+
+**No code change is required** for “it’s I²C”: set `PAN_TILT_SERIAL_PATH` to whatever device exposes **Pi → Arduino serial**, not the I²C bus.
+
+**A. Wire Arduino to PCA9685 (I²C)**  
+Connect **GND**, **SDA**, **SCL**, and **VCC** per your PCA9685 module datasheet. Servos go on the PCA9685 outputs (the bridge sketch uses **channel 0 = tilt**, **channel 1 = pan**).
+
+**B. Wire Pi to Arduino (serial) — pick one**
+
+1. **USB (simplest if available)**  
+   USB cable from Pi to Arduino → often **`/dev/ttyACM0`** (sometimes `/dev/ttyUSB0`). Flash the sketch from a PC first if the Arduino only exposes USB for programming.
+
+2. **GPIO UART (when USB is not used for runtime)**  
+   - **GND** ↔ **GND**  
+   - Pi **TX** (GPIO **14**, physical pin **8**) ↔ Arduino **RX**  
+   - Pi **RX** (GPIO **15**, physical pin **10**) ↔ Arduino **TX**  
+   - Pi GPIO is **3.3 V**. A **5 V** Arduino’s **RX** may need a **level shifter** on the Pi→Arduino line; many 3.3 V boards are fine with both directions at 3.3 V.  
+   - On the Pi, enable the serial port: `sudo raspi-config` → **Interface Options** → **Serial Port** → **disable** login shell over serial, **enable** serial port hardware → **reboot**.  
+   - Set **`PAN_TILT_SERIAL_PATH=/dev/serial0`** (or `/dev/ttyAMA0` on some images if `serial0` is absent).
+
+**C. Flash firmware**  
+From the repo: [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino) — see [`edge/firmware/pan-tilt-bridge/README.md`](edge/firmware/pan-tilt-bridge/README.md).
+
+**D. Edge `.env`**
+
+```bash
+PAN_TILT_DRIVER=serial
+PAN_TILT_SERIAL_PATH=/dev/serial0    # or /dev/ttyACM0 over USB
+PAN_TILT_SERIAL_BAUD=115200
+```
+
+**E. Permissions**  
+Add your user to **`dialout`** (see [§7](#7-serial-permissions-usb-uart-gnss-and-pan-tilt)) so Node can open the serial device.
+
+**If the PCA9685 is on the Pi’s I²C bus only (no Arduino)**  
+The stock agent does **not** yet drive that; you would need a future **I²C pan/tilt driver** on the Pi. The [ArduCAM/PCA9685](https://github.com/ArduCAM/PCA9685) repo’s Pi **C** examples target that layout instead.
 
 ## 6. Run as a systemd service (recommended)
 
@@ -157,17 +203,22 @@ cd ~/eye-in-the-sky && npm run build -w @eye/shared && npm run build -w @eye/edg
 sudo systemctl restart eye-in-the-sky-edge.service
 ```
 
-## 7. USB permissions (GPS / serial)
+## 7. Serial permissions (USB UART, GPIO UART, GNSS, pan/tilt)
 
-If you use USB serial devices (GNSS, **Arduino pan/tilt bridge**, etc.):
+The edge agent needs access to **character serial devices** (`/dev/ttyACM0`, `/dev/serial0`, etc.) for GNSS and/or the **Arduino pan/tilt bridge**.
 
 ```bash
 sudo usermod -aG dialout $USER
-# log out and back in
-ls -l /dev/ttyACM0
+# log out and back in (or reboot)
+ls -l /dev/ttyACM0 /dev/serial0 2>/dev/null
+ls -l /dev/serial/by-id/ 2>/dev/null
 ```
 
-Pan/tilt over serial: flash [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino), set `PAN_TILT_DRIVER=serial` and `PAN_TILT_SERIAL_PATH` in `edge/.env`. The sketch’s PWM behavior follows [ArduCAM/PCA9685](https://github.com/ArduCAM/PCA9685) register timing; install nothing extra on the Pi beyond `npm install` (the edge agent uses the `serialport` package).
+- **USB Arduino:** often `/dev/ttyACM0`.  
+- **Pi GPIO UART to Arduino:** often `/dev/serial0` after enabling UART in `raspi-config` ([§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi)).  
+- If **GPS** and **Arduino** both use USB serial, pick the correct device with **`/dev/serial/by-id/...`** in `PAN_TILT_SERIAL_PATH` (and avoid two apps opening the same port).
+
+Pan/tilt firmware: [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino). PWM register timing follows [ArduCAM/PCA9685](https://github.com/ArduCAM/PCA9685); the Pi only needs `npm install` (includes `serialport`).
 
 ## 8. Camera notes (Arducam / libcamera)
 
@@ -186,7 +237,7 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 
 | Component | Stock agent | Next step on Pi |
 |-----------|-------------|------------------|
-| Pan/tilt | Mock by default; optional `PAN_TILT_DRIVER=serial` + Arduino firmware | [`edge/firmware/pan-tilt-bridge`](edge/firmware/pan-tilt-bridge) + `serialport` |
+| Pan/tilt | Mock by default; optional `PAN_TILT_DRIVER=serial` + Arduino firmware (PCA9685 on **I²C** to Arduino; Pi uses **serial** to Arduino) | [`edge/firmware/pan-tilt-bridge`](edge/firmware/pan-tilt-bridge) + `serialport`; see [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi) |
 | Real GPS | Mock unless you extend `gps.ts` | Read NMEA from serial, build `GpsSnapshot` |
 | BME280 / I2C | Mock env vars | `i2c-bus` or Python sidecar; push readings into telemetry |
 | Lightning AS3935 | Mock | Same pattern: driver → telemetry readings |
