@@ -9,31 +9,52 @@ const execFileAsync = promisify(execFile) as (
   options: { encoding: "buffer"; maxBuffer?: number; timeout?: number },
 ) => Promise<{ stdout: Buffer; stderr: Buffer }>;
 
+const CAPTURE_CLI_HINT =
+  "Install tools: sudo apt update && sudo apt install -y libcamera-apps " +
+  "(then try `rpicam-still` or `libcamera-still`; on older OS use `raspistill` from libraspberrypi-bin). " +
+  "Check: command -v rpicam-still libcamera-still raspistill";
+
 async function jpegFromShell(cmd: string): Promise<Buffer> {
-  const { stdout } = await execFileAsync("sh", ["-c", cmd], {
-    encoding: "buffer",
-    maxBuffer: 40 * 1024 * 1024,
-    timeout: 120_000,
-  });
+  try {
+    const { stdout } = await execFileAsync("sh", ["-c", cmd], {
+      encoding: "buffer",
+      maxBuffer: 40 * 1024 * 1024,
+      timeout: 120_000,
+    });
 
-  if (!stdout.length) {
-    throw new Error("CAPTURE_STILL_CMD produced empty stdout; expected JPEG bytes on stdout");
+    if (!stdout.length) {
+      throw new Error("CAPTURE_STILL_CMD produced empty stdout; expected JPEG bytes on stdout");
+    }
+
+    return stdout;
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException & { stderr?: Buffer; status?: number };
+    const code = typeof err.code === "number" ? err.code : err.status;
+    const stderr = err.stderr ? err.stderr.toString("utf8") : "";
+    const notFound =
+      code === 127 ||
+      /not found/i.test(stderr) ||
+      /No such file or directory/i.test(err.message ?? "");
+    if (notFound) {
+      throw new Error(
+        `CAPTURE_STILL_CMD failed: camera CLI missing from PATH (e.g. libcamera-still: not found). ${CAPTURE_CLI_HINT}`,
+      );
+    }
+    throw e;
   }
-
-  return stdout;
 }
 
 /**
  * Real still: requires `CAPTURE_STILL_CMD` (shell; JPEG bytes on stdout). Used when `MOCK_CAMERA=0`.
  *
- * Example (Pi): `libcamera-still -e jpeg -n --immediate --width 1280 --height 720 -o -`
+ * Example (Pi): `rpicam-still` or `libcamera-still` … `-o -` (see edge/.env.example).
  */
 export async function getJpegForRealCamera(): Promise<Buffer> {
   const cmd = process.env.CAPTURE_STILL_CMD?.trim();
   if (!cmd) {
     throw new Error(
-      "MOCK_CAMERA=0 requires CAPTURE_STILL_CMD in edge/.env — a shell command that writes a JPEG to stdout. " +
-        "Example: libcamera-still -e jpeg -n --immediate --width 1280 --height 720 -o -",
+      "MOCK_CAMERA=0 requires CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout. " +
+        "Example: rpicam-still -e jpeg -n --immediate --width 1280 --height 720 -o -",
     );
   }
   return jpegFromShell(cmd);

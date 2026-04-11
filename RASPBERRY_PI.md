@@ -245,8 +245,9 @@ The repository’s edge agent currently supports:
 
 For **real** stills from a Pi camera stack, you typically:
 
-1. Install Arducam / `libcamera` packages per [Arducam’s Pi docs](https://docs.arducam.com/).
-2. Capture with `rpicam-still` (or `libcamera-still`) to a file, then upload via the same **presign → PUT → finalize** flow as in `edge/src/upload-capture.ts`.
+1. Install camera support: [Arducam Pi docs](https://docs.arducam.com/) if applicable, plus **`sudo apt install -y libcamera-apps`**. On Bookworm, the still binary is often **`rpicam-still`** (not `libcamera-still`); run `command -v rpicam-still libcamera-still` to see which exists.
+2. Set **`CAPTURE_STILL_CMD`** in `edge/.env` to a command that writes JPEG bytes to **stdout** (e.g. `… -o -`). Examples are in `edge/.env.example`.
+3. Upload uses the same **presign → PUT → finalize** flow as in `edge/src/upload-capture.ts`.
 
 That wiring is **hardware-specific**; keep captures under the size limits your API enforces (`MAX_CAPTURE_BYTES` on the server). Prefer resizing large 64 MP frames on the Pi before upload.
 
