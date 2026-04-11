@@ -3,6 +3,8 @@ import { config } from "./config.js";
 
 const MLS_URL = "https://location.services.mozilla.com/v1/geolocate";
 const MAX_APS = 20;
+/** Mozilla Ichnaea rejects Wi-Fi-only fixes with fewer than 2 BSSIDs (privacy); omit Wi-Fi and use GeoIP fallback instead. */
+const MLS_MIN_WIFI_APS = 2;
 
 export type MozillaGeolocateResult = {
   lat: number;
@@ -15,7 +17,8 @@ function sortBySignal(aps: WifiAccessPoint[]): WifiAccessPoint[] {
 }
 
 /**
- * POST visible Wi-Fi APs to Mozilla Location Service; returns WGS84 fix + accuracy (m).
+ * POST to Mozilla Location Service: Wi-Fi triangulation when ≥2 APs, else GeoIP via `considerIp` (coarse).
+ * @see https://ichnaea.readthedocs.io/en/stable/api/geolocate.html — fewer than 2 Wi-Fi networks cannot yield a Wi-Fi fix.
  */
 export async function mozillaWifiGeolocate(
   accessPoints: WifiAccessPoint[],
@@ -33,10 +36,18 @@ export async function mozillaWifiGeolocate(
     headers["X-API-Key"] = config.mozillaLocationApiKey;
   }
 
+  const body: Record<string, unknown> = {
+    considerIp: true,
+    fallbacks: { lacf: true, ipf: true },
+  };
+  if (wifiAccessPoints.length >= MLS_MIN_WIFI_APS) {
+    body.wifiAccessPoints = wifiAccessPoints;
+  }
+
   const res = await fetch(MLS_URL, {
     method: "POST",
     headers,
-    body: JSON.stringify({ wifiAccessPoints }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -53,7 +64,8 @@ export async function mozillaWifiGeolocate(
         hypothesisId: "H2",
         status: res.status,
         bodySnippet,
-        apCount: wifiAccessPoints.length,
+        scannedApCount: accessPoints.length,
+        wifiSentInBody: wifiAccessPoints.length >= MLS_MIN_WIFI_APS ? wifiAccessPoints.length : 0,
       }),
     );
     // #endregion
@@ -63,6 +75,7 @@ export async function mozillaWifiGeolocate(
   const data = (await res.json()) as {
     location?: { lat?: number; lng?: number };
     accuracy?: number;
+    fallback?: string;
   };
   const lat = data.location?.lat;
   const lon = data.location?.lng;
@@ -81,7 +94,8 @@ export async function mozillaWifiGeolocate(
       "[eye-debug] H2 mozillaWifiGeolocate no_location_in_body",
       JSON.stringify({
         hypothesisId: "H2",
-        apCount: wifiAccessPoints.length,
+        scannedApCount: accessPoints.length,
+        wifiSentInBody: wifiAccessPoints.length >= MLS_MIN_WIFI_APS ? wifiAccessPoints.length : 0,
         keys: data && typeof data === "object" ? Object.keys(data) : [],
         rawSnippet: JSON.stringify(data).slice(0, 400),
       }),
@@ -89,6 +103,20 @@ export async function mozillaWifiGeolocate(
     // #endregion
     return null;
   }
+
+  // #region agent log
+  if (wifiAccessPoints.length < MLS_MIN_WIFI_APS) {
+    console.log(
+      "[eye-debug] H2 mozillaWifiGeolocate ip_or_sparse_wifi_ok",
+      JSON.stringify({
+        hypothesisId: "H2",
+        scannedApCount: accessPoints.length,
+        mlsFallback: data.fallback ?? null,
+        accuracy,
+      }),
+    );
+  }
+  // #endregion
 
   return { lat, lon, accuracy };
 }

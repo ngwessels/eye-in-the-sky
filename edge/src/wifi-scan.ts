@@ -104,9 +104,6 @@ async function runShellScan(cmd: string): Promise<string> {
   return stdout;
 }
 
-/** Mozilla MLS (and similar) rarely resolve a fix from a single BSSID — merge in `nmcli` rows when `iw` is sparse. */
-const SPARSE_SCAN_MERGE_THRESHOLD = 2;
-
 function mergeApsByBestSignal(a: WifiAccessPoint[], b: WifiAccessPoint[]): WifiAccessPoint[] {
   const map = new Map<string, WifiAccessPoint>();
   for (const ap of a) {
@@ -121,8 +118,8 @@ function mergeApsByBestSignal(a: WifiAccessPoint[], b: WifiAccessPoint[]): WifiA
   return [...map.values()];
 }
 
-async function maybeMergeNmcliIfSparse(aps: WifiAccessPoint[]): Promise<WifiAccessPoint[]> {
-  if (aps.length >= SPARSE_SCAN_MERGE_THRESHOLD) return aps;
+/** Union `iw` with `nmcli` so MLS often gets ≥2 BSSIDs (each source can see different neighbors). */
+async function mergeWithNmcli(aps: WifiAccessPoint[]): Promise<WifiAccessPoint[]> {
   const nmcli = await tryNmcliScan();
   if (nmcli && nmcli.length > 0) {
     return mergeApsByBestSignal(aps, nmcli);
@@ -141,7 +138,7 @@ export async function scanWifiAccessPoints(): Promise<WifiAccessPoint[]> {
       const stdout = await runShellScan(config.wifiScanShellCmd);
       const simple = parseSimpleScanLines(stdout);
       const parsed = simple.length > 0 ? simple : parseIwScanOutput(stdout);
-      return await maybeMergeNmcliIfSparse(parsed);
+      return await mergeWithNmcli(parsed);
     } catch {
       return [];
     }
@@ -181,5 +178,5 @@ export async function scanWifiAccessPoints(): Promise<WifiAccessPoint[]> {
     return [];
   }
 
-  return await maybeMergeNmcliIfSparse(aps);
+  return await mergeWithNmcli(aps);
 }
