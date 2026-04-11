@@ -1,6 +1,16 @@
 import { stationFetch } from "./http.js";
 import { MOCK_JPEG } from "./camera-mock.js";
 
+async function readErrorSnippet(res: Response): Promise<string> {
+  try {
+    const t = await res.text();
+    if (!t.length || t.length > 800) return "";
+    return ` — ${t.replace(/\s+/g, " ").trim()}`;
+  } catch {
+    return "";
+  }
+}
+
 export type StationCaptureUploadOpts = {
   trace_id?: string;
   command_id?: string;
@@ -41,9 +51,20 @@ export async function uploadStationCapture(
     headers: { "Content-Type": "image/jpeg" },
     // Node fetch BodyInit typing is stricter than runtime (Buffer works).
     body: body as unknown as BodyInit,
+    redirect: "manual",
   });
   if (!put.ok) {
-    throw new Error(`S3 PUT failed: ${put.status}`);
+    const loc = put.headers.get("location");
+    const snippet = await readErrorSnippet(put);
+    let hint = "";
+    if (put.status === 301 || put.status === 302 || put.status === 307 || put.status === 308) {
+      hint =
+        " S3 returned a redirect — presigned URL hostname usually does not match the bucket region. " +
+        "On the Vercel/web app, set S3_BUCKET_REGION (or fix AWS_REGION) to the bucket's actual region " +
+        "(see bucket Properties in AWS console).";
+      if (loc) hint += ` Location: ${loc}`;
+    }
+    throw new Error(`S3 PUT failed: ${put.status}${snippet}${hint}`);
   }
 
   const fin = await stationFetch("/api/stations/me/captures", {

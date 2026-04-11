@@ -7,8 +7,9 @@ let client: S3Client | null = null;
 function s3(): S3Client {
   if (!client) {
     const e = getEnv();
+    const region = e.S3_BUCKET_REGION ?? e.AWS_REGION;
     client = new S3Client({
-      region: e.AWS_REGION,
+      region,
       credentials: {
         accessKeyId: e.AWS_ACCESS_KEY_ID,
         secretAccessKey: e.AWS_SECRET_ACCESS_KEY,
