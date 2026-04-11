@@ -1,7 +1,8 @@
 import { config } from "./config.js";
 import { stationFetch } from "./http.js";
 import { readGpsSnapshot } from "./gps.js";
-import { uploadMockCapture } from "./upload-capture.js";
+import { getJpegForRealCamera } from "./capture-jpeg.js";
+import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
 import * as panTilt from "./pan-tilt/index.js";
@@ -87,19 +88,24 @@ async function handleCommand(cmd: Command) {
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       }
-      case "capture_now":
+      case "capture_now": {
+        const pose = panTilt.getPose();
+        const uploadOpts = {
+          trace_id: cmd.trace_id,
+          command_id: cmd.commandId,
+          kind: "science" as const,
+          mount_pan_deg: pose.pan,
+          mount_tilt_deg: pose.tilt,
+        };
         if (config.mockCamera) {
-          const pose = panTilt.getPose();
-          await uploadMockCapture({
-            trace_id: cmd.trace_id,
-            command_id: cmd.commandId,
-            kind: "science",
-            mount_pan_deg: pose.pan,
-            mount_tilt_deg: pose.tilt,
-          });
+          await uploadMockCapture(uploadOpts);
+        } else {
+          const jpeg = await getJpegForRealCamera();
+          await uploadStationCapture(jpeg, uploadOpts);
         }
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
+      }
       case "run_calibration":
         await runCalibrationSequence(cmd);
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });

@@ -1,14 +1,14 @@
 import { stationFetch } from "./http.js";
 import { MOCK_JPEG } from "./camera-mock.js";
 
-async function readErrorSnippet(res: Response): Promise<string> {
-  try {
-    const t = await res.text();
-    if (!t.length || t.length > 800) return "";
-    return ` — ${t.replace(/\s+/g, " ").trim()}`;
-  } catch {
-    return "";
-  }
+function formatS3ErrorBody(raw: string): { snippet: string; accessDenied: boolean } {
+  const accessDenied =
+    raw.includes("<Code>AccessDenied</Code>") ||
+    raw.includes("AccessDenied") ||
+    /not authorized to perform:\s*s3:PutObject/i.test(raw);
+  const clip = raw.length > 1200 ? `${raw.slice(0, 1200)}…` : raw;
+  const snippet = clip.trim() ? ` — ${clip.replace(/\s+/g, " ").trim()}` : "";
+  return { snippet, accessDenied };
 }
 
 export type StationCaptureUploadOpts = {
@@ -55,7 +55,8 @@ export async function uploadStationCapture(
   });
   if (!put.ok) {
     const loc = put.headers.get("location");
-    const snippet = await readErrorSnippet(put);
+    const raw = await put.text().catch(() => "");
+    const { snippet, accessDenied } = formatS3ErrorBody(raw);
     let hint = "";
     if (put.status === 301 || put.status === 302 || put.status === 307 || put.status === 308) {
       hint =
@@ -63,6 +64,9 @@ export async function uploadStationCapture(
         "On the Vercel/web app, set S3_BUCKET_REGION (or fix AWS_REGION) to the bucket's actual region " +
         "(see bucket Properties in AWS console).";
       if (loc) hint += ` Location: ${loc}`;
+    } else if (put.status === 403 && accessDenied) {
+      hint =
+        " IAM: the user whose access keys sign presigned URLs (Vercel AWS_ACCESS_KEY_ID) needs s3:PutObject (and typically s3:GetObject for reads) on arn:aws:s3:::YOUR_BUCKET/stations/* — attach an inline policy to that IAM user.";
     }
     throw new Error(`S3 PUT failed: ${put.status}${snippet}${hint}`);
   }

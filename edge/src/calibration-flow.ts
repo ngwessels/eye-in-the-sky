@@ -1,5 +1,6 @@
 import { stationFetch } from "./http.js";
-import { uploadMockCapture } from "./upload-capture.js";
+import { getJpegForRealCamera } from "./capture-jpeg.js";
+import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import { config } from "./config.js";
 import * as panTilt from "./pan-tilt/index.js";
 
@@ -24,15 +25,20 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
       method: "POST",
       body: JSON.stringify(p),
     });
+    const pose = panTilt.getPose();
+    const uploadOpts = {
+      trace_id: cmd.trace_id,
+      command_id: cmd.commandId,
+      kind: "calibration" as const,
+      mount_pan_deg: pose.pan,
+      mount_tilt_deg: pose.tilt,
+    };
     if (config.mockCamera) {
-      const pose = panTilt.getPose();
-      const { s3Key } = await uploadMockCapture({
-        trace_id: cmd.trace_id,
-        command_id: cmd.commandId,
-        kind: "calibration",
-        mount_pan_deg: pose.pan,
-        mount_tilt_deg: pose.tilt,
-      });
+      const { s3Key } = await uploadMockCapture(uploadOpts);
+      keys.push(s3Key);
+    } else {
+      const jpeg = await getJpegForRealCamera();
+      const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
       keys.push(s3Key);
     }
   }
