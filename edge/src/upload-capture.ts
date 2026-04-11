@@ -1,5 +1,20 @@
+import sharp from "sharp";
 import { stationFetch } from "./http.js";
 import { MOCK_JPEG } from "./camera-mock.js";
+
+function uploadJpegRotationDeg(): number {
+  const raw = process.env.UPLOAD_JPEG_ROTATE_DEG?.trim();
+  if (raw === undefined || raw === "") return 180;
+  if (raw === "0") return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 180;
+}
+
+async function prepareJpegForUpload(input: Buffer): Promise<Buffer> {
+  const deg = uploadJpegRotationDeg();
+  if (deg === 0) return input;
+  return sharp(input).rotate(deg).jpeg({ mozjpeg: true }).toBuffer();
+}
 
 function formatS3ErrorBody(raw: string): { snippet: string; accessDenied: boolean } {
   const accessDenied =
@@ -44,7 +59,8 @@ export async function uploadStationCapture(
     headers: { "Content-Type": string };
   };
 
-  const body = Buffer.isBuffer(imageBytes) ? imageBytes : Buffer.from(imageBytes);
+  const rawBody = Buffer.isBuffer(imageBytes) ? imageBytes : Buffer.from(imageBytes);
+  const body = await prepareJpegForUpload(rawBody);
 
   const put = await fetch(presign.uploadUrl, {
     method: "PUT",
