@@ -43,6 +43,14 @@ function isPositionBadForAim(gps: GpsSnapshot | undefined): boolean {
   return false;
 }
 
+/** Why `aim_absolute` treats position as unusable (for console debugging on device). */
+function positionBadReason(gps: GpsSnapshot | undefined): string {
+  if (!gps) return "no_snapshot";
+  if (gps.fix_type === "none") return "fix_type_none";
+  if (gps.position_source === "wifi" && !config.allowWifiForAim) return "wifi_fix_but_allowWifiForAim_false";
+  return "ok";
+}
+
 async function sendTelemetry() {
   const gps = latestPositionSnapshot;
   const readings = await collectSensorReadings();
@@ -111,7 +119,41 @@ async function handleCommand(cmd: Command) {
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       case "aim_absolute": {
+        // #region agent log
+        console.log(
+          "[eye-debug] H3_H4 aim_absolute precheck",
+          JSON.stringify({
+            hypothesisId: "H3_H4",
+            commandId: cmd.commandId,
+            trace_id: cmd.trace_id ?? null,
+            gpsBad,
+            badReason: positionBadReason(gps),
+            allowWifiForAim: config.allowWifiForAim,
+            wifiPositioningEnabled: config.wifiPositioningEnabled,
+            snapshot: gps
+              ? {
+                  fix_type: gps.fix_type,
+                  position_source: gps.position_source ?? null,
+                  lat: gps.lat,
+                  lon: gps.lon,
+                  accuracy_m: gps.accuracy_m ?? null,
+                  observedAt: gps.observedAt ?? null,
+                }
+              : null,
+          }),
+        );
+        // #endregion
         if (gpsBad) {
+          // #region agent log
+          console.log(
+            "[eye-debug] H3_H4 aim_absolute ack gps_degraded",
+            JSON.stringify({
+              hypothesisId: "H3_H4",
+              commandId: cmd.commandId,
+              badReason: positionBadReason(gps),
+            }),
+          );
+          // #endregion
           await ack(cmd.commandId, false, undefined, "gps_degraded");
           break;
         }
