@@ -1,6 +1,9 @@
 import { normalizeAzimuthDeg } from "@eye/shared";
 import { stationFetch } from "./http.js";
-import { getJpegForRealCamera, getJpegForRealCameraAtIndex } from "./capture-jpeg.js";
+import {
+  getJpegForCalibrationStill,
+  getJpegForCalibrationStillAtIndex,
+} from "./capture-jpeg.js";
 import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import type { StationCaptureUploadOpts } from "./upload-capture.js";
 import { config, resolveOmniSlotOffsets } from "./config.js";
@@ -85,7 +88,7 @@ async function uploadOmniCalibrationPhase(
       const { s3Key } = await uploadMockCapture(uploadOpts);
       keys.push(s3Key);
     } else {
-      const jpeg = await getJpegForRealCameraAtIndex(i);
+      const jpeg = await getJpegForCalibrationStillAtIndex(i);
       const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
       keys.push(s3Key);
     }
@@ -128,7 +131,7 @@ async function uploadSingleCameraCalibrationPhase(
     const { s3Key } = await uploadMockCapture(uploadOpts);
     keys.push(s3Key);
   } else {
-    const jpeg = await getJpegForRealCamera();
+    const jpeg = await getJpegForCalibrationStill();
     const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
     keys.push(s3Key);
   }
