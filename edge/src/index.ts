@@ -10,6 +10,7 @@ import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import type { StationCaptureUploadOpts } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
+import { postDebugIngest } from "./debug-ingest.js";
 import {
   getMountNorthOffsetDeg,
   setMountNorthOffsetFromCloud,
@@ -223,36 +224,24 @@ async function handleCommand(cmd: Command) {
           omniQuad: config.omniQuad,
         });
         // #region agent log
-        fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-          body: JSON.stringify({
-            sessionId: "5044f5",
-            location: "index.ts:run_calibration",
-            message: "run_calibration_enter",
-            hypothesisId: "H1",
-            data: { commandId: cmd.commandId, omniQuad: config.omniQuad },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        postDebugIngest({
+          location: "index.ts:run_calibration",
+          message: "run_calibration_enter",
+          hypothesisId: "H1",
+          data: { commandId: cmd.commandId, omniQuad: config.omniQuad },
+        });
         // #endregion
         await runCalibrationSequence(cmd);
         log.info("run_calibration sequence finished, sending ack", {
           commandId: cmd.commandId,
         });
         // #region agent log
-        fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-          body: JSON.stringify({
-            sessionId: "5044f5",
-            location: "index.ts:run_calibration",
-            message: "run_calibration_success_before_ack",
-            hypothesisId: "H1",
-            data: { commandId: cmd.commandId },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        postDebugIngest({
+          location: "index.ts:run_calibration",
+          message: "run_calibration_success_before_ack",
+          hypothesisId: "H1",
+          data: { commandId: cmd.commandId },
+        });
         // #endregion
         await ack(cmd.commandId, true, { pose: nominalMountPose() });
         break;
@@ -270,18 +259,12 @@ async function handleCommand(cmd: Command) {
         stackSnippet: stack?.split("\n").slice(0, 6).join(" | "),
       });
       // #region agent log
-      fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-        body: JSON.stringify({
-          sessionId: "5044f5",
-          location: "index.ts:handleCommand:catch",
-          message: "run_calibration_throw",
-          hypothesisId: "H1",
-          data: { commandId: cmd.commandId, error: msg },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      postDebugIngest({
+        location: "index.ts:handleCommand:catch",
+        message: "run_calibration_throw",
+        hypothesisId: "H1",
+        data: { commandId: cmd.commandId, error: msg },
+      });
       // #endregion
     }
     await ack(cmd.commandId, false, undefined, msg);

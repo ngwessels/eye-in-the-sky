@@ -10,6 +10,7 @@ import { config, resolveOmniSlotOffsets } from "./config.js";
 import { getOmniCameraCount } from "./omni-camera-count.js";
 import { getMountNorthOffsetDeg } from "./mount-settings-cache.js";
 import { log } from "./logger.js";
+import { postDebugIngest } from "./debug-ingest.js";
 
 // #region agent log
 function debugCal(
@@ -17,18 +18,7 @@ function debugCal(
   hypothesisId: string,
   data: Record<string, unknown>,
 ): void {
-  fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-    body: JSON.stringify({
-      sessionId: "5044f5",
-      location: "calibration-flow.ts",
-      message,
-      hypothesisId,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  postDebugIngest({ location: "calibration-flow.ts", message, hypothesisId, data });
 }
 // #endregion
 

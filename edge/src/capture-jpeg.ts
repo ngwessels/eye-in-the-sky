@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { config } from "./config.js";
 import { MOCK_JPEG } from "./camera-mock.js";
+import { postDebugIngest } from "./debug-ingest.js";
 
 const execFileAsync = promisify(execFile) as (
   file: string,
@@ -190,18 +191,12 @@ export async function getJpegForCalibrationStill(): Promise<Buffer> {
     cmd = buildCaptureShellCommand(DEFAULT_CALIBRATION_STILL_CMD);
   }
   // #region agent log
-  fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-    body: JSON.stringify({
-      sessionId: "5044f5",
-      location: "capture-jpeg.ts:getJpegForCalibrationStill",
-      message: "calibration_still_single",
-      hypothesisId: "H_cal_cmd",
-      data: { source, usesCalibrationEnv: Boolean(cal), matchCapture, timeoutMs },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  postDebugIngest({
+    location: "capture-jpeg.ts:getJpegForCalibrationStill",
+    message: "calibration_still_single",
+    hypothesisId: "H_cal_cmd",
+    data: { source, usesCalibrationEnv: Boolean(cal), matchCapture, timeoutMs },
+  });
   // #endregion
   return jpegFromShell(cmd, timeoutMs);
 }
@@ -248,24 +243,18 @@ export async function getJpegForCalibrationStillAtIndex(cameraIndex: number): Pr
     tpl = DEFAULT_CALIBRATION_STILL_CMD_TEMPLATE;
   }
   // #region agent log
-  fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
-    body: JSON.stringify({
-      sessionId: "5044f5",
-      location: "capture-jpeg.ts:getJpegForCalibrationStillAtIndex",
-      message: "calibration_still_omni",
-      hypothesisId: "H_cal_cmd",
-      data: {
-        cameraIndex,
-        source,
-        usesCalibrationTemplate: Boolean(calTpl && calTpl.includes("{{INDEX}}")),
-        matchCapture,
-        timeoutMs,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  postDebugIngest({
+    location: "capture-jpeg.ts:getJpegForCalibrationStillAtIndex",
+    message: "calibration_still_omni",
+    hypothesisId: "H_cal_cmd",
+    data: {
+      cameraIndex,
+      source,
+      usesCalibrationTemplate: Boolean(calTpl && calTpl.includes("{{INDEX}}")),
+      matchCapture,
+      timeoutMs,
+    },
+  });
   // #endregion
   if (!tpl || !tpl.includes("{{INDEX}}")) {
     throw new Error(
