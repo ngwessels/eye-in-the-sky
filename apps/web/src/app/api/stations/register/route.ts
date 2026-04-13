@@ -17,9 +17,9 @@ export async function POST(request: Request) {
     /* indexes may already exist */
   }
 
-  let body: { name?: string } = {};
+  let body: { name?: string; omni_quad?: boolean } = {};
   try {
-    body = (await request.json()) as { name?: string };
+    body = (await request.json()) as { name?: string; omni_quad?: boolean };
   } catch {
     /* empty body */
   }
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     capabilities: {
       sensors: [],
       panTilt: { panMin: -180, panMax: 180, tiltMin: -10, tiltMax: 90 },
+      ...(body.omni_quad === true ? { omni_quad: true } : {}),
     },
     calibration: {
       state: "pending",

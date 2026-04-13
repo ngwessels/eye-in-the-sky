@@ -48,13 +48,18 @@ function parseJpegQualityForAppend(): number | null {
   return Math.round(n);
 }
 
-function buildCaptureShellCommand(): string {
-  const base = process.env.CAPTURE_STILL_CMD?.trim() ?? "";
+function buildCaptureShellCommand(baseCmd: string): string {
+  const base = baseCmd.trim();
   if (!base) return base;
   maybeWarnImmediateWithoutAf(base);
   const q = parseJpegQualityForAppend();
   if (q === null || hasExplicitQuality(base)) return base;
   return `${base} -q ${q}`;
+}
+
+function buildDefaultCaptureShellCommand(): string {
+  const base = process.env.CAPTURE_STILL_CMD?.trim() ?? "";
+  return buildCaptureShellCommand(base);
 }
 
 async function jpegFromShell(cmd: string): Promise<Buffer> {
@@ -100,7 +105,7 @@ async function jpegFromShell(cmd: string): Promise<Buffer> {
  * Example (Pi): `rpicam-still` or `libcamera-still` … `-o -` (see edge/.env.example).
  */
 export async function getJpegForRealCamera(): Promise<Buffer> {
-  const cmd = buildCaptureShellCommand();
+  const cmd = buildDefaultCaptureShellCommand();
   if (!cmd) {
     throw new Error(
       "Set CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout " +
@@ -112,11 +117,31 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
 }
 
 /**
+ * Omni / multi-camera adapter: `CAPTURE_STILL_CMD_TEMPLATE` must contain `{{INDEX}}` (libcamera `--camera` index).
+ * Quality suffix behavior matches `CAPTURE_STILL_CMD`.
+ */
+export async function getJpegForRealCameraAtIndex(cameraIndex: number): Promise<Buffer> {
+  const tpl = process.env.CAPTURE_STILL_CMD_TEMPLATE?.trim() ?? "";
+  if (!tpl || !tpl.includes("{{INDEX}}")) {
+    throw new Error(
+      "Set CAPTURE_STILL_CMD_TEMPLATE with literal {{INDEX}} for omni capture, e.g. " +
+        "`rpicam-still -e jpg -n --immediate --camera {{INDEX}} --width 1920 --height 1080 -o -`",
+    );
+  }
+  const substituted = tpl.replaceAll("{{INDEX}}", String(cameraIndex));
+  const cmd = buildCaptureShellCommand(substituted);
+  if (!cmd) {
+    throw new Error("CAPTURE_STILL_CMD_TEMPLATE produced an empty command after substitution");
+  }
+  return jpegFromShell(cmd);
+}
+
+/**
  * Used by `test-pan-tilt-capture`: prefers `CAPTURE_STILL_CMD` when set; otherwise `MOCK_CAMERA=1` uses
  * the tiny mock JPEG; without either, errors (same as the agent).
  */
 export async function getJpegForUpload(): Promise<Buffer> {
-  const cmd = buildCaptureShellCommand();
+  const cmd = buildDefaultCaptureShellCommand();
   if (cmd) {
     return jpegFromShell(cmd);
   }

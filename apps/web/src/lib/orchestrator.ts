@@ -96,17 +96,28 @@ export async function runOrchestratorTick(): Promise<{ enqueued: number }> {
       });
       if (throttle) continue;
 
-      await enqueueCommand({
-        stationId: station.stationId,
-        type: "aim_absolute",
-        payload: {
-          azimuthDeg: meta.bearing,
-          elevationDeg: Math.min(55, Math.max(8, meta.elevation)),
-        },
-        trace_id,
-        watch_target,
-        selection_reason: `score=${meta.score.toFixed(3)} dist_km=${meta.distance.toFixed(1)} precip=${precip.toFixed(2)}`,
-      });
+      if (station.capabilities?.omni_quad) {
+        await enqueueCommand({
+          stationId: station.stationId,
+          type: "capture_now",
+          payload: {},
+          trace_id,
+          watch_target,
+          selection_reason: `omni_quad score=${meta.score.toFixed(3)} dist_km=${meta.distance.toFixed(1)} precip=${precip.toFixed(2)}`,
+        });
+      } else {
+        await enqueueCommand({
+          stationId: station.stationId,
+          type: "aim_absolute",
+          payload: {
+            azimuthDeg: meta.bearing,
+            elevationDeg: Math.min(55, Math.max(8, meta.elevation)),
+          },
+          trace_id,
+          watch_target,
+          selection_reason: `score=${meta.score.toFixed(3)} dist_km=${meta.distance.toFixed(1)} precip=${precip.toFixed(2)}`,
+        });
+      }
       enqueued += 1;
     }
   }

@@ -1,6 +1,6 @@
 # Eye on the Sky — Raspberry Pi station setup
 
-This guide walks through running the **edge agent** on a Raspberry Pi so it registers with your deployed cloud API, uploads captures to **S3**, reports **GPS** and optional **sensors**, and executes **pan/tilt** commands.
+This guide walks through running the **edge agent** on a Raspberry Pi so it registers with your deployed cloud API, uploads captures to **S3**, reports **GPS** and optional **sensors**, and either executes **pan/tilt** commands or runs a **fixed multi-camera (omni quad)** rig without slewing.
 
 ## What you need
 
@@ -10,8 +10,8 @@ This guide walks through running the **edge agent** on a Raspberry Pi so it regi
 | Power | Adequate supply; USB hubs can brown out GPS/camera. |
 | Network | Ethernet or stable Wi‑Fi; Pi must reach your `CLOUD_BASE_URL` over **HTTPS** in production. |
 | GNSS GPS | USB dongle (u-blox, etc.) or UART module; **clear sky** view for a 3D fix. |
-| Camera | Arducam 64MP Hawkeye (or other) per your build; requires vendor / `libcamera` stack on the Pi. |
-| Pan/tilt | **PCA9685 on I2C to the Arduino** (servos); **Pi → Arduino** uses **serial** (USB or GPIO UART), not I2C. Details: [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi). |
+| Camera | Single module or **multi-camera adapter** (e.g. Arducam Multi Camera Adapter on Pi 4/5); requires vendor / `libcamera` stack. |
+| Pan/tilt | Optional if you use an **omni quad** rig: set `OMNI_QUAD=1` and register with `"omni_quad": true`. Otherwise: **PCA9685 on I2C to the Arduino** (servos); **Pi → Arduino** uses **serial** (USB or GPIO UART). Details: [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi). |
 | Cloud already running | Vercel (or other) hosting `apps/web`, with MongoDB, S3, and a **station API key** from registration. |
 
 ## 1. Install Raspberry Pi OS
@@ -84,9 +84,15 @@ curl -s -X POST "$ORIGIN/api/stations/register" \
   -H "Content-Type: application/json" \
   -H "x-admin-secret: $ADMIN_SECRET" \
   -d '{"name":"pi-garage-west"}'
+
+# Fixed quad-camera rig (no pan/tilt): set capabilities on the station so cloud jobs use capture-only paths.
+curl -s -X POST "$ORIGIN/api/stations/register" \
+  -H "Content-Type: application/json" \
+  -H "x-admin-secret: $ADMIN_SECRET" \
+  -d '{"name":"pi-omni-field","omni_quad":true}'
 ```
 
-Save the returned `apiKey` (**shown once**). You will put it in `STATION_API_KEY` on the Pi.
+Save the returned `apiKey` (**shown once**). You will put it in `STATION_API_KEY` on the Pi. Use **`omni_quad: true`** only when the edge device is configured with **`OMNI_QUAD=1`** (see [§8.1](#81-omni-quad-arducam-multi-camera-adapter)).
 
 ## 5. Configure the edge agent on the Pi
 
@@ -110,6 +116,11 @@ nano .env   # or use your editor
 | `WIFI_POSITIONING` | **Unset = on** — Mozilla MLS when GNSS has no fix (see Wi-Fi paragraph). Set **`0`** / **`false`** to disable | Air-gapped or no MLS |
 | `WIFI_SCAN_IFACE` | Wireless interface for `iw dev <iface> scan` (often **`wlan0`**) | — |
 | `ALLOW_WIFI_FOR_AIM` | Unset / **`1`** allow `aim_absolute` with Wi-Fi-only fix; **`0`** = reject | Production GNSS users may set `0` |
+| `OMNI_QUAD` | **`1`** / **`true`**: multi-camera rig; each `capture_now` runs **one exposure per camera, in order** (never parallel — the adapter multiplexes). Pan/tilt commands no-op. | Must match station `capabilities.omni_quad` in Mongo / registration |
+| `OMNI_CAMERA_COUNT` | **Unset / `auto`**: detect via `rpicam-still --list-cameras` (or `libcamera-still` / `rpicam-hello`), cached **5 minutes** (`OMNI_CAMERA_DETECT_CACHE_MS`). **Integer**: fixed count, no probe. **`MOCK_CAMERA=1` + auto**: uses how many entries you listed in `OMNI_SLOT_AZIMUTH_DEG`. | Must match physical modules / adapter |
+| `OMNI_SLOT_AZIMUTH_DEG` | Comma-separated **relative** azimuths from slot 0 boresight (default **`0,90,180,270`**) | Must list **at least** as many values as the active camera count |
+| `CAPTURE_STILL_CMD_TEMPLATE` | Shell command with literal **`{{INDEX}}`** for `rpicam-still --camera` (or equivalent) | Required for real omni capture (unless `MOCK_CAMERA=1`) |
+| `OMNI_CAPTURE_ELEVATION_DEG` | Optional; if set, sent on finalize for every slot | Approximate elevation for wide FOV sky cameras |
 
 **GNSS:** plug in the USB GNSS receiver. The stock agent does **not** yet parse NMEA in code; implement reading from `/dev/ttyACM0` / `/dev/serial0` and populate the fields the API expects (`lat`, `lon`, `hdop`, `sat_count`, `fix_type`, `observedAt`, optional `position_source: "gnss"`) in `edge/src/gps.ts`. Until then, **Wi-Fi fallback is enabled by default** for coarse position when there is no GNSS fix (set **`WIFI_POSITIONING=0`** to disable).
 
@@ -254,6 +265,24 @@ For **real** stills from a Pi camera stack, you typically:
 
 That wiring is **hardware-specific**; keep captures under the size limits your API enforces (`MAX_CAPTURE_BYTES` on the server).
 
+### 8.1 Omni quad (Arducam multi-camera adapter)
+
+For a **fixed** set of cameras (typically four, 90° apart on the horizon), the adapter **multiplexes** sensors: only one is active at a time. The edge agent runs **sequential** still commands (one per slot), then **presign → PUT → finalize** for each JPEG. Wall time is roughly **N×** a single exposure plus switching.
+
+1. Register the station with **`"omni_quad": true`** (see [§4](#4-register-a-station-one-time)).
+2. On the Pi set **`OMNI_QUAD=1`**, **`OMNI_SLOT_AZIMUTH_DEG`**, and **`CAPTURE_STILL_CMD_TEMPLATE`** with **`{{INDEX}}`**. Leave **`OMNI_CAMERA_COUNT`** unset so the agent **counts** sensors from **`rpicam-still --list-cameras`** (or set **`OMNI_CAMERA_COUNT=N`** to override). Example:
+
+   ```bash
+   OMNI_QUAD=1
+   OMNI_SLOT_AZIMUTH_DEG=0,90,180,270
+   # Example only — verify --camera indices for your adapter + OS:
+   CAPTURE_STILL_CMD_TEMPLATE=rpicam-still -e jpg -n --immediate --camera {{INDEX}} --width 1920 --height 1080 -o -
+   ```
+
+3. **`CAPTURE_STILL_CMD`** is still used when **`OMNI_QUAD`** is off. With **`OMNI_QUAD=1`**, real capture uses **only** the template. Stills are taken **sequentially** (slot 0, then 1, …): the hardware cannot expose every sensor simultaneously.
+4. Each upload gets **`azimuth_true_deg`** = calibrated north offset + slot offset (same convention as slot 0 = former “pan home” boresight). Optional **`OMNI_CAPTURE_ELEVATION_DEG`** sets a shared elevation on finalize.
+5. **`run_calibration`** (servo grid) is **not** supported in omni mode; use sun / manual **`north_offset`** workflows. Bootstrap auto-calibration is **not** enqueued for omni stations.
+
 ## Hardware integration (not yet in stock agent)
 
 | Component | Stock agent | Next step on Pi |
@@ -277,7 +306,9 @@ That wiring is **hardware-specific**; keep captures under the size limits your A
 | `telemetry failed 401` | `STATION_API_KEY` wrong or rotated; re-register if needed. |
 | `poll failed` / network errors | `CLOUD_BASE_URL`, DNS, firewall, TLS interception. |
 | `finalize failed` / `clock_skew` | System time (`timedatectl`); or set server `CLOCK_SKEW_MODE=downrank` if you must accept skew temporarily. |
-| `no_position_fix` / failed `aim_absolute` | No lat/lon at all: check Wi-Fi scan + MLS (`iw`, `WIFI_IW_USE_SUDO`, etc.). If you opted out, remove `WIFI_POSITIONING=0` from `.env`. Or implement GNSS in `edge/src/gps.ts`. |
+| `no_position_fix` / failed `aim_absolute` | No lat/lon at all: check Wi-Fi scan + MLS (`iw`, `WIFI_IW_USE_SUDO`, etc.). If you opted out, remove `WIFI_POSITIONING=0` from `.env`. Or implement GNSS in `edge/src/gps.ts`. With **`OMNI_QUAD=1`**, **`aim_absolute`** is a no-op (success ack); this row mainly applies to pan/tilt stations. |
+| `omni_quad_run_calibration_unsupported` | **`run_calibration`** was enqueued but the edge is in omni mode; use manual / sun calibration. Ensure bootstrap did not run (omni stations skip it). |
+| `CAPTURE_STILL_CMD_TEMPLATE` / `{{INDEX}}` errors | Set a template with **`{{INDEX}}`** for omni real capture, or use **`MOCK_CAMERA=1`** for pipeline tests. |
 | `gps_degraded` / failed `aim_absolute` | Snapshot exists but `fix_type` is `none` (GNSS no fix). Improve sky view / antenna. |
 | `wifi_not_allowed_for_aim` | Wi-Fi fix present but `ALLOW_WIFI_FOR_AIM=0`; use GNSS or set `ALLOW_WIFI_FOR_AIM=1`. |
 | Legacy `gps_degraded` in old acks | Same family as above; new edge versions use the specific errors in the rows above. |

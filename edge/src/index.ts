@@ -1,14 +1,16 @@
 import type { GpsSnapshot } from "@eye/shared";
-import { config } from "./config.js";
+import { normalizeAzimuthDeg } from "@eye/shared";
+import { config, resolveOmniSlotOffsets } from "./config.js";
+import { getOmniCameraCount } from "./omni-camera-count.js";
 import { log } from "./logger.js";
 import { stationFetch } from "./http.js";
 import { resolveTelemetryPositionSnapshot } from "./position-snapshot.js";
-import { getJpegForRealCamera } from "./capture-jpeg.js";
+import { getJpegForRealCamera, getJpegForRealCameraAtIndex } from "./capture-jpeg.js";
 import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
+import type { StationCaptureUploadOpts } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
 import * as panTilt from "./pan-tilt/index.js";
-import { normalizeAzimuthDeg } from "@eye/shared";
 import {
   getMountNorthOffsetDeg,
   setMountNorthOffsetFromCloud,
@@ -119,6 +121,41 @@ async function ack(
   });
 }
 
+/**
+ * One still per camera index, strictly sequential (multiplexed adapters cannot use all sensors at once).
+ * Camera count: `OMNI_CAMERA_COUNT` if set, else libcamera `--list-cameras`, else (mock only) slot list length.
+ */
+async function uploadOmniSlots(
+  kind: "science" | "calibration_probe",
+  cmd: Command,
+): Promise<number> {
+  const north = getMountNorthOffsetDeg();
+  const n = await getOmniCameraCount();
+  const offsets = resolveOmniSlotOffsets(n);
+  const elev = config.omniCaptureElevationDeg;
+  log.info("omni sequential capture start", { cameras: n, kind });
+  for (let i = 0; i < n; i++) {
+    const slotOffset = offsets[i]!;
+    const azimuth_true_deg = normalizeAzimuthDeg(north + slotOffset);
+    const uploadOpts: StationCaptureUploadOpts = {
+      trace_id: cmd.trace_id,
+      command_id: cmd.commandId,
+      kind,
+      azimuth_true_deg,
+      ...(elev != null ? { elevation_deg: elev } : {}),
+    };
+    log.info("omni capture slot", { index: i, of: n });
+    if (config.mockCamera) {
+      await uploadMockCapture(uploadOpts);
+    } else {
+      const jpeg = await getJpegForRealCameraAtIndex(i);
+      await uploadStationCapture(jpeg, uploadOpts);
+    }
+  }
+  log.info("omni sequential capture done", { cameras: n });
+  return n;
+}
+
 async function handleCommand(cmd: Command) {
   const gps = latestPositionSnapshot;
   const gpsBad = isPositionBadForAim(gps);
@@ -126,10 +163,20 @@ async function handleCommand(cmd: Command) {
   try {
     switch (cmd.type) {
       case "safe_home":
+        if (config.omniQuad) {
+          log.info("safe_home omni_noop");
+          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
+          break;
+        }
         await panTilt.safeHome();
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
       case "aim_absolute": {
+        if (config.omniQuad) {
+          log.info("aim_absolute omni_noop", { commandId: cmd.commandId });
+          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
+          break;
+        }
         // #region agent log
         console.log(
           "[eye-debug] H3_H4 aim_absolute precheck",
@@ -179,6 +226,11 @@ async function handleCommand(cmd: Command) {
         break;
       }
       case "aim_delta": {
+        if (config.omniQuad) {
+          log.info("aim_delta omni_noop", { commandId: cmd.commandId });
+          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
+          break;
+        }
         const dp = Number(cmd.payload.deltaPanDeg ?? 0);
         const dt = Number(cmd.payload.deltaTiltDeg ?? 0);
         await panTilt.applyDelta(dp, dt);
@@ -186,6 +238,14 @@ async function handleCommand(cmd: Command) {
         break;
       }
       case "capture_now": {
+        if (config.omniQuad) {
+          const omni_slots = await uploadOmniSlots("science", cmd);
+          await ack(cmd.commandId, true, {
+            pose: panTilt.getPose(),
+            omni_slots,
+          });
+          break;
+        }
         const pose = panTilt.getPose();
         const uploadOpts = {
           trace_id: cmd.trace_id,
@@ -207,6 +267,14 @@ async function handleCommand(cmd: Command) {
         if (gpsBad) {
           const br = positionBadReason(gps);
           await ack(cmd.commandId, false, undefined, aimAbsoluteAckError(br));
+          break;
+        }
+        if (config.omniQuad) {
+          const omni_slots = await uploadOmniSlots("calibration_probe", cmd);
+          await ack(cmd.commandId, true, {
+            pose: panTilt.getPose(),
+            omni_slots,
+          });
           break;
         }
         const az = Number(cmd.payload.azimuthDeg);
@@ -232,6 +300,15 @@ async function handleCommand(cmd: Command) {
         break;
       }
       case "run_calibration":
+        if (config.omniQuad) {
+          await ack(
+            cmd.commandId,
+            false,
+            undefined,
+            "omni_quad_run_calibration_unsupported",
+          );
+          break;
+        }
         await runCalibrationSequence(cmd);
         await ack(cmd.commandId, true, { pose: panTilt.getPose() });
         break;
@@ -282,6 +359,8 @@ log.info("Eye on the Sky edge agent ready", {
   panTiltDriver: config.panTiltDriver,
   panTiltBackend: panTilt.panTiltBackend,
   mockCamera: config.mockCamera,
+  omniQuad: config.omniQuad,
+  omniCameraCountEnv: process.env.OMNI_CAMERA_COUNT?.trim() || "auto",
   wifiPositioning: config.wifiPositioningEnabled,
   wifiIpGeoFallback: config.wifiIpGeoFallbackEnabled,
   allowWifiForAim: config.allowWifiForAim,

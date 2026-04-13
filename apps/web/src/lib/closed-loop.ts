@@ -1,6 +1,6 @@
 import { getDb } from "./mongodb";
 import { getEnv } from "./env";
-import type { CaptureDoc } from "./types";
+import type { CaptureDoc, StationDoc } from "./types";
 import { enqueueCommand } from "./commands";
 
 export async function runClosedLoopTick(): Promise<{ enqueued: number }> {
@@ -41,6 +41,17 @@ export async function runClosedLoopTick(): Promise<{ enqueued: number }> {
 
     const depth = c.followups_enqueued ?? 0;
     if (depth >= env.MAX_FOLLOWUPS_PER_TRACE) {
+      await db.collection("captures").updateOne(
+        { captureId: c.captureId },
+        { $set: { closed_loop_applied: true } },
+      );
+      continue;
+    }
+
+    const station = await db
+      .collection<StationDoc>("stations")
+      .findOne({ stationId: c.stationId });
+    if (station?.capabilities?.omni_quad) {
       await db.collection("captures").updateOne(
         { captureId: c.captureId },
         { $set: { closed_loop_applied: true } },

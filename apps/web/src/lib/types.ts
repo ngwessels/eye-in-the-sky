@@ -42,6 +42,8 @@ export interface StationDoc {
   capabilities: {
     sensors: string[];
     panTilt?: { panMin: number; panMax: number; tiltMin: number; tiltMax: number };
+    /** Fixed quad (or multi) camera rig — no pan/tilt slewing; cloud crons use capture-only paths. */
+    omni_quad?: boolean;
   };
   calibration: {
     state: "pending" | "ready" | "degraded";

@@ -33,6 +33,9 @@ export type StationCaptureUploadOpts = {
   /** Mount pan/tilt in degrees at shutter time; server applies north_offset for true azimuth. */
   mount_pan_deg?: number;
   mount_tilt_deg?: number;
+  /** Fixed-camera / omni: true-north boresight (clockwise); server uses this directly for `view`. */
+  azimuth_true_deg?: number;
+  elevation_deg?: number;
 };
 
 /** Presign → PUT → finalize (same as cloud `capture_now` with a concrete JPEG buffer). */
@@ -100,6 +103,8 @@ export async function uploadStationCapture(
       contentType: "image/jpeg",
       ...(opts.mount_pan_deg != null ? { mount_pan_deg: opts.mount_pan_deg } : {}),
       ...(opts.mount_tilt_deg != null ? { mount_tilt_deg: opts.mount_tilt_deg } : {}),
+      ...(opts.azimuth_true_deg != null ? { azimuth_true_deg: opts.azimuth_true_deg } : {}),
+      ...(opts.elevation_deg != null ? { elevation_deg: opts.elevation_deg } : {}),
     }),
   });
   if (!fin.ok) {
