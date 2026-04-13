@@ -41,8 +41,9 @@ export interface StationDoc {
   };
   capabilities: {
     sensors: string[];
+    /** @deprecated Legacy pan/tilt limits; hardware no longer supported. */
     panTilt?: { panMin: number; panMax: number; tiltMin: number; tiltMax: number };
-    /** Fixed quad (or multi) camera rig — no pan/tilt slewing; cloud crons use capture-only paths. */
+    /** Fixed quad (or multi) camera rig; cloud treats orchestration like omni (capture-only). */
     omni_quad?: boolean;
   };
   calibration: {

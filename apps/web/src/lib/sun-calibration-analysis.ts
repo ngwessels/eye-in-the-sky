@@ -14,14 +14,14 @@ export type SunCalibrationContext = {
 };
 
 function buildPrompt(ctx: SunCalibrationContext): string {
-  return `Outdoor pan-tilt weather camera calibration frame.
+  return `Outdoor fixed-mount weather camera calibration frame.
 
 Facts (use as ground truth for sun position in the sky):
 - Capture time (UTC): ${ctx.capturedAtIso}
 - Observer WGS84: ${ctx.latDeg.toFixed(6)}°N lat, ${ctx.lonDeg.toFixed(6)}°E lon (negative lon = west)
 - Sun azimuth (true north, clockwise 0–360°): ${ctx.sun_azimuth_true_deg.toFixed(2)}°
 - Sun elevation above horizon: ${ctx.sun_elevation_deg.toFixed(2)}°
-- Mount reported pan: ${ctx.mount_pan_deg.toFixed(2)}° (logical pan; 0 = home in mount frame)
+- Mount reported pan: ${ctx.mount_pan_deg.toFixed(2)}° (fixed mount; 0 = reference boresight)
 - Mount reported tilt: ${ctx.mount_tilt_deg.toFixed(2)}° (elevation-style angle from mount)
 
 Task:

@@ -51,7 +51,7 @@ Step-by-step Pi setup (OS, Node, systemd, GPS, camera notes): **[RASPBERRY_PI.md
 
 ## Hardware
 
-See [RASPBERRY_PI.md](./RASPBERRY_PI.md) and the project plan for Arducam 64MP, pan/tilt, USB/UART GPS, and optional BME280 / rain / wind / lightning. The stock `edge` agent sends **no** environmental sensor readings until you add real drivers in `edge/src/sensors/collect.ts`. It does **not** send a mock JPEG unless you set **`MOCK_CAMERA=1`**. GNSS comes from code you add in `gps.ts`; without it, the agent **defaults to Wi-Fi + Mozilla MLS** for coarse fixes (set **`WIFI_POSITIONING=0`** to turn that off). Use **`CAPTURE_STILL_CMD`** for real stills.
+See [RASPBERRY_PI.md](./RASPBERRY_PI.md) for Arducam / libcamera, fixed or omni multi-camera rigs, USB/UART GPS, and optional BME280 / rain / wind / lightning. The stock `edge` agent sends **no** environmental sensor readings until you add real drivers in `edge/src/sensors/collect.ts`. It does **not** send a mock JPEG unless you set **`MOCK_CAMERA=1`**. GNSS comes from code you add in `gps.ts`; without it, the agent **defaults to Wi-Fi + Mozilla MLS** for coarse fixes (set **`WIFI_POSITIONING=0`** to turn that off). Use **`CAPTURE_STILL_CMD`** for real stills.
 
 ## Privacy
 

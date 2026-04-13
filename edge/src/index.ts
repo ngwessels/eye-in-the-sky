@@ -10,7 +10,6 @@ import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
 import type { StationCaptureUploadOpts } from "./upload-capture.js";
 import { collectSensorReadings } from "./sensors/collect.js";
 import { runCalibrationSequence } from "./calibration-flow.js";
-import * as panTilt from "./pan-tilt/index.js";
 import {
   getMountNorthOffsetDeg,
   setMountNorthOffsetFromCloud,
@@ -24,16 +23,9 @@ type Command = {
   trace_id?: string;
 };
 
-/** Map geographic azimuth [0, 360) to mount pan [-180, 180] before driver clamp. */
-function azimuthToPanDeg(azimuthDeg: number): number {
-  const a = ((azimuthDeg % 360) + 360) % 360;
-  return a > 180 ? a - 360 : a;
-}
-
-/** Commanded true-north azimuth (clockwise) to logical mount pan given calibration.north_offset_deg. */
-function geographicAzimuthToMountPanDeg(geoAzDeg: number, northOffsetDeg: number): number {
-  const mountAz = normalizeAzimuthDeg(geoAzDeg - northOffsetDeg);
-  return azimuthToPanDeg(mountAz);
+/** Nominal mount pose for fixed cameras (no pan/tilt hardware). */
+function nominalMountPose(): { pan: number; tilt: number } {
+  return { pan: 0, tilt: 0 };
 }
 
 /** Latest fix from start of each poll cycle (GNSS preferred, else cached Wi-Fi MLS). */
@@ -45,7 +37,6 @@ function isPositionBadForAim(gps: GpsSnapshot | undefined): boolean {
   return false;
 }
 
-/** Why `aim_absolute` treats position as unusable (for console debugging on device). */
 function positionBadReason(gps: GpsSnapshot | undefined): string {
   if (!gps) return "no_snapshot";
   if (gps.fix_type === "none") return "fix_type_none";
@@ -53,7 +44,6 @@ function positionBadReason(gps: GpsSnapshot | undefined): string {
   return "ok";
 }
 
-/** Stored on command ack — distinct from legacy `gps_degraded` where the cause is not GNSS quality. */
 function aimAbsoluteAckError(badReason: string): string {
   if (badReason === "no_snapshot") return "no_position_fix";
   if (badReason === "wifi_fix_but_allowWifiForAim_false") return "wifi_not_allowed_for_aim";
@@ -106,7 +96,7 @@ async function pollCommands() {
 }
 
 function delayMs(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r));
 }
 
 async function ack(
@@ -123,7 +113,6 @@ async function ack(
 
 /**
  * One still per camera index, strictly sequential (multiplexed adapters cannot use all sensors at once).
- * Camera count: `OMNI_CAMERA_COUNT` if set, else libcamera `--list-cameras`, else (mock only) slot list length.
  */
 async function uploadOmniSlots(
   kind: "science" | "calibration_probe",
@@ -163,90 +152,22 @@ async function handleCommand(cmd: Command) {
   try {
     switch (cmd.type) {
       case "safe_home":
-        if (config.omniQuad) {
-          log.info("safe_home omni_noop");
-          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
-          break;
-        }
-        await panTilt.safeHome();
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+        await ack(cmd.commandId, false, undefined, "pan_tilt_not_supported");
         break;
-      case "aim_absolute": {
-        if (config.omniQuad) {
-          log.info("aim_absolute omni_noop", { commandId: cmd.commandId });
-          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
-          break;
-        }
-        // #region agent log
-        console.log(
-          "[eye-debug] H3_H4 aim_absolute precheck",
-          JSON.stringify({
-            hypothesisId: "H3_H4",
-            commandId: cmd.commandId,
-            trace_id: cmd.trace_id ?? null,
-            gpsBad,
-            badReason: positionBadReason(gps),
-            allowWifiForAim: config.allowWifiForAim,
-            wifiPositioningEnabled: config.wifiPositioningEnabled,
-            snapshot: gps
-              ? {
-                  fix_type: gps.fix_type,
-                  position_source: gps.position_source ?? null,
-                  lat: gps.lat,
-                  lon: gps.lon,
-                  accuracy_m: gps.accuracy_m ?? null,
-                  observedAt: gps.observedAt ?? null,
-                }
-              : null,
-          }),
-        );
-        // #endregion
-        if (gpsBad) {
-          const br = positionBadReason(gps);
-          const ackErr = aimAbsoluteAckError(br);
-          // #region agent log
-          console.log(
-            "[eye-debug] H3_H4 aim_absolute ack fail",
-            JSON.stringify({
-              hypothesisId: "H3_H4",
-              commandId: cmd.commandId,
-              badReason: br,
-              ackError: ackErr,
-            }),
-          );
-          // #endregion
-          await ack(cmd.commandId, false, undefined, ackErr);
-          break;
-        }
-        const az = Number(cmd.payload.azimuthDeg);
-        const el = Number(cmd.payload.elevationDeg);
-        const pan = geographicAzimuthToMountPanDeg(az, getMountNorthOffsetDeg());
-        await panTilt.applyAbsolute(pan, el);
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+      case "aim_absolute":
+      case "aim_delta":
+        await ack(cmd.commandId, false, undefined, "pan_tilt_not_supported");
         break;
-      }
-      case "aim_delta": {
-        if (config.omniQuad) {
-          log.info("aim_delta omni_noop", { commandId: cmd.commandId });
-          await ack(cmd.commandId, true, { omni_noop: true, pose: panTilt.getPose() });
-          break;
-        }
-        const dp = Number(cmd.payload.deltaPanDeg ?? 0);
-        const dt = Number(cmd.payload.deltaTiltDeg ?? 0);
-        await panTilt.applyDelta(dp, dt);
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
-        break;
-      }
       case "capture_now": {
         if (config.omniQuad) {
           const omni_slots = await uploadOmniSlots("science", cmd);
           await ack(cmd.commandId, true, {
-            pose: panTilt.getPose(),
+            pose: nominalMountPose(),
             omni_slots,
           });
           break;
         }
-        const pose = panTilt.getPose();
+        const pose = nominalMountPose();
         const uploadOpts = {
           trace_id: cmd.trace_id,
           command_id: cmd.commandId,
@@ -260,7 +181,7 @@ async function handleCommand(cmd: Command) {
           const jpeg = await getJpegForRealCamera();
           await uploadStationCapture(jpeg, uploadOpts);
         }
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+        await ack(cmd.commandId, true, { pose });
         break;
       }
       case "calibration_sky_probe": {
@@ -272,17 +193,13 @@ async function handleCommand(cmd: Command) {
         if (config.omniQuad) {
           const omni_slots = await uploadOmniSlots("calibration_probe", cmd);
           await ack(cmd.commandId, true, {
-            pose: panTilt.getPose(),
+            pose: nominalMountPose(),
             omni_slots,
           });
           break;
         }
-        const az = Number(cmd.payload.azimuthDeg);
-        const el = Number(cmd.payload.elevationDeg);
-        const pan = geographicAzimuthToMountPanDeg(az, getMountNorthOffsetDeg());
-        await panTilt.applyAbsolute(pan, el);
         await delayMs(config.calibrationSkyProbeSettleMs);
-        const pose = panTilt.getPose();
+        const pose = nominalMountPose();
         const uploadOpts = {
           trace_id: cmd.trace_id,
           command_id: cmd.commandId,
@@ -296,21 +213,12 @@ async function handleCommand(cmd: Command) {
           const jpeg = await getJpegForRealCamera();
           await uploadStationCapture(jpeg, uploadOpts);
         }
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+        await ack(cmd.commandId, true, { pose });
         break;
       }
       case "run_calibration":
-        if (config.omniQuad) {
-          await ack(
-            cmd.commandId,
-            false,
-            undefined,
-            "omni_quad_run_calibration_unsupported",
-          );
-          break;
-        }
         await runCalibrationSequence(cmd);
-        await ack(cmd.commandId, true, { pose: panTilt.getPose() });
+        await ack(cmd.commandId, true, { pose: nominalMountPose() });
         break;
       default:
         await ack(cmd.commandId, false, undefined, "unknown_command");
@@ -356,18 +264,16 @@ async function pullMountSettingsOnce() {
 log.info("Eye on the Sky edge agent ready", {
   cloud: config.cloudBaseUrl,
   pollMs: config.commandPollIntervalMs,
-  panTiltDriver: config.panTiltDriver,
-  panTiltBackend: panTilt.panTiltBackend,
   mockCamera: config.mockCamera,
   omniQuad: config.omniQuad,
   omniCameraCountEnv: process.env.OMNI_CAMERA_COUNT?.trim() || "auto",
   wifiPositioning: config.wifiPositioningEnabled,
   wifiIpGeoFallback: config.wifiIpGeoFallbackEnabled,
-  allowWifiForAim: config.allowWifiForAim,
+  allowWifiForProbe: config.allowWifiForAim,
 });
 if (!config.wifiPositioningEnabled) {
   log.info(
-    "Wi-Fi positioning disabled (WIFI_POSITIONING=0). Without a GNSS fix in gps.ts, telemetry may omit position and aim_absolute may fail with no_position_fix.",
+    "Wi-Fi positioning disabled (WIFI_POSITIONING=0). Without a GNSS fix in gps.ts, telemetry may omit position and calibration_sky_probe may fail with no_position_fix.",
   );
 }
 

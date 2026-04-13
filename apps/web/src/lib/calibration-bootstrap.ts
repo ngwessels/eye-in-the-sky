@@ -15,7 +15,6 @@ export async function maybeEnqueueBootstrapCalibration(
       "location.lat": { $exists: true },
       "location.lon": { $exists: true },
       "gps.degraded": false,
-      "capabilities.omni_quad": { $ne: true },
       $or: [
         { "calibration.bootstrap_calibration_enqueued": { $exists: false } },
         { "calibration.bootstrap_calibration_enqueued": false },

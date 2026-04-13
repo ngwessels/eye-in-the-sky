@@ -1,6 +1,6 @@
 # Eye on the Sky — Raspberry Pi station setup
 
-This guide walks through running the **edge agent** on a Raspberry Pi so it registers with your deployed cloud API, uploads captures to **S3**, reports **GPS** and optional **sensors**, and either executes **pan/tilt** commands or runs a **fixed multi-camera (omni quad)** rig without slewing.
+This guide walks through running the **edge agent** on a Raspberry Pi so it registers with your deployed cloud API, uploads captures to **S3**, reports **GPS** and optional **sensors**, using a **fixed camera** (single module or **omni quad** multi-camera adapter). Pan/tilt hardware is not supported.
 
 ## What you need
 
@@ -10,8 +10,7 @@ This guide walks through running the **edge agent** on a Raspberry Pi so it regi
 | Power | Adequate supply; USB hubs can brown out GPS/camera. |
 | Network | Ethernet or stable Wi‑Fi; Pi must reach your `CLOUD_BASE_URL` over **HTTPS** in production. |
 | GNSS GPS | USB dongle (u-blox, etc.) or UART module; **clear sky** view for a 3D fix. |
-| Camera | Single module or **multi-camera adapter** (e.g. Arducam Multi Camera Adapter on Pi 4/5); requires vendor / `libcamera` stack. |
-| Pan/tilt | Optional if you use an **omni quad** rig: set `OMNI_QUAD=1` and register with `"omni_quad": true`. Otherwise: **PCA9685 on I2C to the Arduino** (servos); **Pi → Arduino** uses **serial** (USB or GPIO UART). Details: [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi). |
+| Camera | Single module or **multi-camera adapter** (e.g. Arducam Multi Camera Adapter on Pi 4/5); requires vendor / `libcamera` stack. Use **`OMNI_QUAD=1`** and **`"omni_quad": true`** at registration for quad rigs ([§8.1](#81-omni-quad-arducam-multi-camera-adapter)). |
 | Cloud already running | Vercel (or other) hosting `apps/web`, with MongoDB, S3, and a **station API key** from registration. |
 
 ## 1. Install Raspberry Pi OS
@@ -108,15 +107,10 @@ nano .env   # or use your editor
 | `STATION_API_KEY` | Key from registration | Same |
 | `COMMAND_POLL_INTERVAL_MS` | `180000`–`300000` (3–5 minutes) | Any |
 | `MOCK_CAMERA` | **unset** — real stills via `CAPTURE_STILL_CMD` | `1` uploads a tiny JPEG (pipeline tests only) |
-| `PAN_TILT_DRIVER` | **unset or `auto`** (default): probe I²C for PCA9685 → else serial if `PAN_TILT_SERIAL_PATH` set → else mock | Same; laptop with no I²C + no path → mock |
-| `PAN_TILT_SERIAL_PATH` | Set for **Arduino ↔ Pi serial** (auto or `serial`). USB Arduino often `/dev/ttyACM0`; **GPIO UART** often `/dev/serial0`. Not auto-guessed (avoids opening the wrong USB serial, e.g. GPS). | — |
-| `PAN_TILT_SERIAL_BAUD` | Optional; default `115200` | Must match firmware |
-| `PAN_TILT_I2C_BUS` | Used for **auto** probe and `pca9685` (often **`1`** → `/dev/i2c-1`) | — |
-| `PAN_TILT_PCA9685_ADDR` | Used for **auto** probe and `pca9685` — decimal **`64`** or `0x40` | — |
 | `WIFI_POSITIONING` | **Unset = on** — Mozilla MLS when GNSS has no fix (see Wi-Fi paragraph). Set **`0`** / **`false`** to disable | Air-gapped or no MLS |
 | `WIFI_SCAN_IFACE` | Wireless interface for `iw dev <iface> scan` (often **`wlan0`**) | — |
-| `ALLOW_WIFI_FOR_AIM` | Unset / **`1`** allow `aim_absolute` with Wi-Fi-only fix; **`0`** = reject | Production GNSS users may set `0` |
-| `OMNI_QUAD` | **`1`** / **`true`**: multi-camera rig; each `capture_now` runs **one exposure per camera, in order** (never parallel — the adapter multiplexes). Pan/tilt commands no-op. | Must match station `capabilities.omni_quad` in Mongo / registration |
+| `ALLOW_WIFI_FOR_AIM` | Unset / **`1`** allow `calibration_sky_probe` with Wi-Fi-only fix; **`0`** = reject | Production GNSS users may set `0` |
+| `OMNI_QUAD` | **`1`** / **`true`**: multi-camera rig; each `capture_now` runs **one exposure per camera, in order** (adapter multiplexes). | Must match station `capabilities.omni_quad` in Mongo / registration |
 | `OMNI_CAMERA_COUNT` | **Unset / `auto`**: detect via `rpicam-still --list-cameras` (or `libcamera-still` / `rpicam-hello`), cached **5 minutes** (`OMNI_CAMERA_DETECT_CACHE_MS`). **Integer**: fixed count, no probe. **`MOCK_CAMERA=1` + auto**: uses how many entries you listed in `OMNI_SLOT_AZIMUTH_DEG`. | Must match physical modules / adapter |
 | `OMNI_SLOT_AZIMUTH_DEG` | Comma-separated **relative** azimuths from slot 0 boresight (default **`0,90,180,270`**) | Must list **at least** as many values as the active camera count |
 | `CAPTURE_STILL_CMD_TEMPLATE` | Shell command with literal **`{{INDEX}}`** for `rpicam-still --camera` (or equivalent) | Required for real omni capture (unless `MOCK_CAMERA=1`) |
@@ -127,64 +121,11 @@ nano .env   # or use your editor
 **Wi-Fi based positioning (default on):** when there is **no GNSS fix**, the agent scans nearby access points, calls **Mozilla Location Service** (`https://location.services.mozilla.com/v1/geolocate`), and reports `position_source: "wifi"` in telemetry. Accuracy is typically **tens to hundreds of meters** — useful for a rough station location on the map, **not** a substitute for GNSS.
 
 - **Server behavior:** the cloud stores `location_source: "wifi"`, keeps **`gps.degraded: true`**, and does **not** promote quality tier or auto-enqueue bootstrap calibration (those still require a non-degraded GNSS fix).
-- **Pan/tilt:** by default, **`aim_absolute` is allowed** with a Wi-Fi-only fix (`ALLOW_WIFI_FOR_AIM` unset). Set **`ALLOW_WIFI_FOR_AIM=0`** to reject slews unless GNSS has a real fix (telemetry can still upload Wi-Fi position).
+- **`calibration_sky_probe`:** by default allowed with a Wi-Fi-only fix (`ALLOW_WIFI_FOR_AIM` unset). Set **`ALLOW_WIFI_FOR_AIM=0`** to reject unless GNSS has a real fix (telemetry can still upload Wi-Fi position).
 - **Scan permissions:** `iw dev <iface> scan` usually needs **root** or **`CAP_NET_ADMIN`** on the Node binary. Typical setups: install **`iw`** (`sudo apt install -y iw`), set **`WIFI_IW_USE_SUDO=1`**, and add a **passwordless** `/usr/sbin/iw` rule for the service user in **`sudoers`**, or run the edge service as root (less ideal). Optional **`WIFI_SCAN_CMD`** can wrap a script that prints `iw` scan output or one line per AP: `aa:bb:cc:dd:ee:ff -72`. See **`edge/.env.example`**. If `iw` fails, the agent may fall back to **`nmcli -t -f BSSID,SIGNAL dev wifi list`** when NetworkManager is present.
 - **Rate limiting:** **`WIFI_GEOLOC_MIN_INTERVAL_MS`** (default 10 minutes) reuses the last MLS result between scans.
 
 **NTP reporting:** the agent sends `time_quality` with each telemetry batch. Ensure the system clock is synced (step 1).
-
-### 5.1 Pan / tilt: Arduino + PCA9685 (I2C + serial to Pi)
-
-The **PCA9685** speaks **I²C**. Either the **Arduino** drives it (Pi talks to the Arduino over **serial** — set **`PAN_TILT_SERIAL_PATH`**; default **`auto`** uses serial after an I²C probe miss), or the **Pi** drives the chip directly on **`/dev/i2c-*`** (**`auto`** selects **`pca9685`** when the probe sees the chip at **`PAN_TILT_PCA9685_ADDR`**). Force a mode with **`PAN_TILT_DRIVER=serial`**, **`pca9685`**, or **`mock`** if needed (see env table).
-
-You need **two separate links**:
-
-| Link | Purpose |
-|------|--------|
-| **Arduino ↔ PCA9685** | **I²C** (SDA, SCL, GND, power). The flashed sketch uses `Wire` to drive PWM for the servos. |
-| **Raspberry Pi ↔ Arduino** | **Serial** at **115200 baud** (text lines `HOME` and `SET pan tilt`). The edge agent uses the Node `serialport` package — same code whether that serial link is **USB** or **GPIO UART**. |
-
-**No code change is required** for “it’s I²C”: set `PAN_TILT_SERIAL_PATH` to whatever device exposes **Pi → Arduino serial**, not the I²C bus.
-
-**A. Wire Arduino to PCA9685 (I²C)**  
-Connect **GND**, **SDA**, **SCL**, and **VCC** per your PCA9685 module datasheet. Servos go on the PCA9685 outputs (the bridge sketch uses **channel 0 = tilt**, **channel 1 = pan**).
-
-**B. Wire Pi to Arduino (serial) — pick one**
-
-1. **USB (simplest if available)**  
-   USB cable from Pi to Arduino → often **`/dev/ttyACM0`** (sometimes `/dev/ttyUSB0`). Flash the sketch from a PC first if the Arduino only exposes USB for programming.
-
-2. **GPIO UART (when USB is not used for runtime)**  
-   - **GND** ↔ **GND**  
-   - Pi **TX** (GPIO **14**, physical pin **8**) ↔ Arduino **RX**  
-   - Pi **RX** (GPIO **15**, physical pin **10**) ↔ Arduino **TX**  
-   - Pi GPIO is **3.3 V**. A **5 V** Arduino’s **RX** may need a **level shifter** on the Pi→Arduino line; many 3.3 V boards are fine with both directions at 3.3 V.  
-   - On the Pi, enable the serial port: `sudo raspi-config` → **Interface Options** → **Serial Port** → **disable** login shell over serial, **enable** serial port hardware → **reboot**.  
-   - Set **`PAN_TILT_SERIAL_PATH=/dev/serial0`** (or `/dev/ttyAMA0` on some images if `serial0` is absent).
-
-**C. Flash firmware**  
-From the repo: [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino) — see [`edge/firmware/pan-tilt-bridge/README.md`](edge/firmware/pan-tilt-bridge/README.md).
-
-**D. Edge `.env`**
-
-```bash
-# Default auto is fine: omit PAN_TILT_DRIVER, set only the serial device.
-PAN_TILT_SERIAL_PATH=/dev/serial0    # or /dev/ttyACM0 over USB
-PAN_TILT_SERIAL_BAUD=115200
-```
-
-**E. Permissions**  
-Add your user to **`dialout`** (see [§7](#7-serial-permissions-usb-uart-gnss-and-pan-tilt)) so Node can open the serial device.
-
-**If the PCA9685 is on the Pi’s I²C bus only (no Arduino)**  
-Enable I²C in `raspi-config`; confirm the chip with `i2cdetect -y 1` (often address **0x40**). **Default `auto`** will select **`pca9685`** when the probe succeeds. To force it (or skip probing), set **`PAN_TILT_DRIVER=pca9685`**. Example:
-
-```bash
-PAN_TILT_I2C_BUS=1
-PAN_TILT_PCA9685_ADDR=64
-```
-
-The edge agent uses the same PWM mapping as [`pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino). Add your user to the **`i2c`** group (or run with sufficient access to `/dev/i2c-*`) so Node can open the bus.
 
 ## 6. Run as a systemd service (recommended)
 
@@ -225,9 +166,9 @@ cd ~/eye-on-the-sky && npm run build -w @eye/shared && npm run build -w @eye/edg
 sudo systemctl restart eye-on-the-sky-edge.service
 ```
 
-## 7. Device permissions (serial, I²C pan/tilt, GNSS, Wi-Fi scan)
+## 7. Device permissions (serial GNSS, optional I²C sensors, Wi-Fi scan)
 
-**Serial** (resolved **`serial`** when `PAN_TILT_SERIAL_PATH` is set under **`auto`**, or `PAN_TILT_DRIVER=serial`; also GNSS when wired): the agent needs access to **`/dev/ttyACM0`**, **`/dev/serial0`**, etc.
+**Serial** (GNSS modules on USB or UART): add the service user to **`dialout`** so Node can open **`/dev/ttyACM0`**, **`/dev/serial0`**, etc.
 
 ```bash
 sudo usermod -aG dialout $USER
@@ -236,18 +177,14 @@ ls -l /dev/ttyACM0 /dev/serial0 2>/dev/null
 ls -l /dev/serial/by-id/ 2>/dev/null
 ```
 
-- **USB Arduino:** often `/dev/ttyACM0`.  
-- **Pi GPIO UART to Arduino:** often `/dev/serial0` after enabling UART in `raspi-config` ([§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi)).  
-- If **GPS** and **Arduino** both use USB serial, pick the correct device with **`/dev/serial/by-id/...`** in `PAN_TILT_SERIAL_PATH` (and avoid two apps opening the same port).
+If multiple USB serial devices are present, use stable **`/dev/serial/by-id/...`** paths in your GNSS configuration and avoid two processes opening the same port.
 
-**I²C** (resolved **`pca9685`** when **`auto`** probe finds the chip, or `PAN_TILT_DRIVER=pca9685`): add your user to the **`i2c`** group (and enable I²C in `raspi-config`), then re-login:
+**I²C** (optional future sensors such as BME280): enable I²C in `raspi-config`, add the user to **`i2c`**, re-login:
 
 ```bash
 sudo usermod -aG i2c $USER
 ls -l /dev/i2c-1
 ```
-
-Pan/tilt over serial + Arduino: [`edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino`](edge/firmware/pan-tilt-bridge/pan-tilt-bridge.ino). The **`pca9685`** driver uses the same PWM math in Node; `npm install` pulls in **`i2c-bus`** (native build tools on the Pi: `build-essential` if install fails).
 
 **Wi-Fi scan** (default unless `WIFI_POSITIONING=0`): the `pi` user normally **cannot** run `iw dev wlan0 scan` without extra privileges. Prefer **`sudoers`** allowing **`NOPASSWD: /usr/sbin/iw`** (or your distro’s `iw` path — check `command -v iw`) for the service account, or set capabilities on the **`node`** binary (advanced). Without this, MLS is never called and telemetry omits position when GNSS is absent.
 
@@ -281,13 +218,13 @@ For a **fixed** set of cameras (typically four, 90° apart on the horizon), the 
 
 3. **`CAPTURE_STILL_CMD`** is still used when **`OMNI_QUAD`** is off. With **`OMNI_QUAD=1`**, real capture uses **only** the template. Stills are taken **sequentially** (slot 0, then 1, …): the hardware cannot expose every sensor simultaneously.
 4. Each upload gets **`azimuth_true_deg`** = calibrated north offset + slot offset (same convention as slot 0 = former “pan home” boresight). Optional **`OMNI_CAPTURE_ELEVATION_DEG`** sets a shared elevation on finalize.
-5. **`run_calibration`** (servo grid) is **not** supported in omni mode; use sun / manual **`north_offset`** workflows. Bootstrap auto-calibration is **not** enqueued for omni stations.
+5. **`run_calibration`**: each progress phase captures **all** camera slots in order (same as `capture_now`). The **first** uploaded object in `calibration_s3_keys` is always **slot 0** so server sun calibration matches the reference boresight. Requires **`CAPTURE_STILL_CMD_TEMPLATE`** when not using `MOCK_CAMERA`. Bootstrap auto-calibration runs for omni stations too once GNSS is healthy.
 
 ## Hardware integration (not yet in stock agent)
 
 | Component | Stock agent | Next step on Pi |
 |-----------|-------------|------------------|
-| Pan/tilt | **`auto`**: I²C PCA9685 on Pi, else serial if `PAN_TILT_SERIAL_PATH` set, else mock | [`edge/firmware/pan-tilt-bridge`](edge/firmware/pan-tilt-bridge) + `serialport` or Pi I²C `pca9685`; see [§5.1](#51-pan--tilt-arduino--pca9685-i2c--serial-to-pi) |
+| Fixed camera / omni | Supported in stock agent | Single `CAPTURE_STILL_CMD` or **`OMNI_QUAD`** + template; see §8.1 |
 | Real GPS | No NMEA in stock `gps.ts` yet | Read NMEA from serial, build `GpsSnapshot` |
 | Wi-Fi position | **On by default** when GNSS has no fix; set `WIFI_POSITIONING=0` to disable | `iw` / `nmcli` scan → Mozilla MLS; see §5 |
 | BME280 / I2C | None in stock agent | Add a driver in `edge/src/sensors/collect.ts` (`i2c-bus` or sidecar) |
@@ -306,11 +243,11 @@ For a **fixed** set of cameras (typically four, 90° apart on the horizon), the 
 | `telemetry failed 401` | `STATION_API_KEY` wrong or rotated; re-register if needed. |
 | `poll failed` / network errors | `CLOUD_BASE_URL`, DNS, firewall, TLS interception. |
 | `finalize failed` / `clock_skew` | System time (`timedatectl`); or set server `CLOCK_SKEW_MODE=downrank` if you must accept skew temporarily. |
-| `no_position_fix` / failed `aim_absolute` | No lat/lon at all: check Wi-Fi scan + MLS (`iw`, `WIFI_IW_USE_SUDO`, etc.). If you opted out, remove `WIFI_POSITIONING=0` from `.env`. Or implement GNSS in `edge/src/gps.ts`. With **`OMNI_QUAD=1`**, **`aim_absolute`** is a no-op (success ack); this row mainly applies to pan/tilt stations. |
-| `omni_quad_run_calibration_unsupported` | **`run_calibration`** was enqueued but the edge is in omni mode; use manual / sun calibration. Ensure bootstrap did not run (omni stations skip it). |
+| `no_position_fix` / failed `calibration_sky_probe` | No lat/lon: check Wi-Fi scan + MLS (`iw`, `WIFI_IW_USE_SUDO`, etc.) or implement GNSS in `edge/src/gps.ts`. |
+| `pan_tilt_not_supported` | Cloud or an old client enqueued **`aim_absolute`**, **`aim_delta`**, or **`safe_home`**; pan/tilt hardware is removed — use **`capture_now`** only. |
 | `CAPTURE_STILL_CMD_TEMPLATE` / `{{INDEX}}` errors | Set a template with **`{{INDEX}}`** for omni real capture, or use **`MOCK_CAMERA=1`** for pipeline tests. |
-| `gps_degraded` / failed `aim_absolute` | Snapshot exists but `fix_type` is `none` (GNSS no fix). Improve sky view / antenna. |
-| `wifi_not_allowed_for_aim` | Wi-Fi fix present but `ALLOW_WIFI_FOR_AIM=0`; use GNSS or set `ALLOW_WIFI_FOR_AIM=1`. |
+| `gps_degraded` | Snapshot exists but `fix_type` is `none` (GNSS no fix). Improve sky view / antenna. |
+| `wifi_not_allowed_for_aim` | Wi-Fi fix present but `ALLOW_WIFI_FOR_AIM=0`; **`calibration_sky_probe`** needs a fix or set `ALLOW_WIFI_FOR_AIM=1`. |
 | Legacy `gps_degraded` in old acks | Same family as above; new edge versions use the specific errors in the rows above. |
 | No Wi-Fi position / scan errors | `command -v iw`; run `iw dev wlan0 scan` as the service user; use `WIFI_IW_USE_SUDO=1` + sudoers, or `WIFI_SCAN_CMD`. |
 | Service exits immediately | `journalctl -u eye-on-the-sky-edge -e`; verify `node` path and `WorkingDirectory`. |

@@ -54,27 +54,13 @@ export async function runGroundObservationTick(): Promise<{ enqueued: number }> 
     if (azimuthDeg == null) continue;
 
     const trace_id = uuidv4();
-    const elevationDeg = env.GROUND_CRON_ELEVATION_DEG;
-
-    if (!station.capabilities?.omni_quad) {
-      await enqueueCommand({
-        stationId: station.stationId,
-        type: "aim_absolute",
-        payload: { azimuthDeg, elevationDeg },
-        trace_id,
-        selection_reason: `${GROUND_CRON_REASON_PREFIX} aim elev=${elevationDeg}`,
-      });
-      enqueued += 1;
-    }
 
     await enqueueCommand({
       stationId: station.stationId,
       type: "capture_now",
       payload: {},
       trace_id,
-      selection_reason: station.capabilities?.omni_quad
-        ? `${GROUND_CRON_REASON_PREFIX} omni_quad capture`
-        : `${GROUND_CRON_REASON_PREFIX} capture`,
+      selection_reason: `${GROUND_CRON_REASON_PREFIX} capture`,
     });
     enqueued += 1;
     stationsScheduled += 1;

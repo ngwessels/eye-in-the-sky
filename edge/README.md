@@ -10,4 +10,4 @@ Local quick start: copy [`.env.example`](./.env.example) to `.env`, then from re
 npm run build -w @eye/shared && npm run dev -w @eye/edge
 ```
 
-Hardware checks (from `edge/` after `npm run build`): `npm run test-pan-tilt` (motion only), `npm run test-pan-tilt-capture` (motion + presign/S3/finalize per pose; see `.env.example`).
+Tests: `npm run test -w @eye/edge` (omni camera-list parser).

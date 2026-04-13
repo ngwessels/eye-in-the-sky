@@ -1,8 +1,11 @@
+import { normalizeAzimuthDeg } from "@eye/shared";
 import { stationFetch } from "./http.js";
-import { getJpegForRealCamera } from "./capture-jpeg.js";
+import { getJpegForRealCamera, getJpegForRealCameraAtIndex } from "./capture-jpeg.js";
 import { uploadMockCapture, uploadStationCapture } from "./upload-capture.js";
-import { config } from "./config.js";
-import * as panTilt from "./pan-tilt/index.js";
+import type { StationCaptureUploadOpts } from "./upload-capture.js";
+import { config, resolveOmniSlotOffsets } from "./config.js";
+import { getOmniCameraCount } from "./omni-camera-count.js";
+import { getMountNorthOffsetDeg } from "./mount-settings-cache.js";
 
 type Command = {
   commandId: string;
@@ -10,44 +13,69 @@ type Command = {
 };
 
 function delayMs(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r));
 }
 
-function clampCal(pan: number, tilt: number): { pan: number; tilt: number } {
-  return {
-    pan: Math.min(config.panMax, Math.max(config.panMin, pan)),
-    tilt: Math.min(config.tiltMax, Math.max(config.tiltMin, tilt)),
-  };
-}
+/** Per phase: all omni slots sequentially; `keys` order is slot0..slotN-1 so first key is reference boresight for sun calibration. */
+async function uploadOmniCalibrationPhase(
+  cmd: Command,
+  keys: string[],
+): Promise<void> {
+  const north = getMountNorthOffsetDeg();
+  const n = await getOmniCameraCount();
+  const offsets = resolveOmniSlotOffsets(n);
+  const elev = config.omniCaptureElevationDeg;
 
-/**
- * Distinct logical poses per phase so servos move and frames differ (previously every shot was at home).
- * Spans a fraction of configured pan/tilt limits centered on mid-range.
- */
-function poseForCalibrationPhase(phase: string): { pan: number; tilt: number } {
-  const panSpan = (config.panMax - config.panMin) * 0.45;
-  const tiltSpan = (config.tiltMax - config.tiltMin) * 0.35;
-  const panMid = (config.panMin + config.panMax) / 2;
-  const tiltMid = (config.tiltMin + config.tiltMax) / 2;
-  switch (phase) {
-    case "sweep_start":
-      return clampCal(panMid - panSpan * 0.95, tiltMid + tiltSpan * 0.25);
-    case "grid_1":
-      return clampCal(panMid - panSpan * 0.4, tiltMid + tiltSpan * 0.65);
-    case "grid_2":
-      return clampCal(panMid + panSpan * 0.4, tiltMid + tiltSpan * 0.65);
-    case "grid_3":
-      return clampCal(panMid + panSpan * 0.95, tiltMid + tiltSpan * 0.25);
-    default:
-      return clampCal(panMid, tiltMid);
+  for (let i = 0; i < n; i++) {
+    const slotOffset = offsets[i]!;
+    const azimuth_true_deg = normalizeAzimuthDeg(north + slotOffset);
+    const uploadOpts: StationCaptureUploadOpts = {
+      trace_id: cmd.trace_id,
+      command_id: cmd.commandId,
+      kind: "calibration",
+      azimuth_true_deg,
+      ...(elev != null ? { elevation_deg: elev } : {}),
+    };
+    if (config.mockCamera) {
+      const { s3Key } = await uploadMockCapture(uploadOpts);
+      keys.push(s3Key);
+    } else {
+      const jpeg = await getJpegForRealCameraAtIndex(i);
+      const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
+      keys.push(s3Key);
+    }
   }
 }
 
-/** Multi-step self-calibration: progress heartbeats + multiple calibration frames + server AI validation keys. */
+/** Fixed single camera: one still per phase. */
+async function uploadSingleCameraCalibrationPhase(
+  cmd: Command,
+  keys: string[],
+): Promise<void> {
+  const uploadOpts = {
+    trace_id: cmd.trace_id,
+    command_id: cmd.commandId,
+    kind: "calibration" as const,
+    mount_pan_deg: 0,
+    mount_tilt_deg: 0,
+  };
+  if (config.mockCamera) {
+    const { s3Key } = await uploadMockCapture(uploadOpts);
+    keys.push(s3Key);
+  } else {
+    const jpeg = await getJpegForRealCamera();
+    const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
+    keys.push(s3Key);
+  }
+}
+
+/**
+ * Multi-phase calibration: progress heartbeats + calibration frames + server `/calibration/complete`.
+ * Omni: each phase captures **all** camera slots in order (first S3 key = slot 0 for sun / north_offset).
+ */
 export async function runCalibrationSequence(cmd: Command): Promise<void> {
   const keys: string[] = [];
 
-  await panTilt.safeHome();
   await delayMs(config.calibrationHomeSettleMs);
 
   const phases = [
@@ -58,8 +86,6 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
   ];
 
   for (const p of phases) {
-    const target = poseForCalibrationPhase(p.phase);
-    await panTilt.applyAbsolute(target.pan, target.tilt);
     await delayMs(config.calibrationPhaseSettleMs);
 
     await stationFetch("/api/stations/me/calibration/progress", {
@@ -67,23 +93,16 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
       body: JSON.stringify(p),
     });
 
-    const pose = panTilt.getPose();
-    const uploadOpts = {
-      trace_id: cmd.trace_id,
-      command_id: cmd.commandId,
-      kind: "calibration" as const,
-      mount_pan_deg: pose.pan,
-      mount_tilt_deg: pose.tilt,
-    };
-    if (config.mockCamera) {
-      const { s3Key } = await uploadMockCapture(uploadOpts);
-      keys.push(s3Key);
+    if (config.omniQuad) {
+      await uploadOmniCalibrationPhase(cmd, keys);
     } else {
-      const jpeg = await getJpegForRealCamera();
-      const { s3Key } = await uploadStationCapture(jpeg, uploadOpts);
-      keys.push(s3Key);
+      await uploadSingleCameraCalibrationPhase(cmd, keys);
     }
   }
+
+  const method = config.omniQuad
+    ? ["omni_quad", "fixed_mount_settle", "multi_slot_per_phase", "multi_frame"]
+    : ["fixed_mount_settle", "multi_frame_calibration", "multi_frame"];
 
   await stationFetch("/api/stations/me/calibration/complete", {
     method: "POST",
@@ -91,7 +110,7 @@ export async function runCalibrationSequence(cmd: Command): Promise<void> {
       north_offset_deg: 0,
       horizon_deg: 0,
       confidence: 0.72,
-      method: ["pan_tilt_home_settle", "calibration_grid_poses", "multi_frame"],
+      method,
       calibration_s3_keys: keys,
     }),
   });

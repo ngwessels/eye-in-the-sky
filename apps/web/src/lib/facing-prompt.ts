@@ -12,11 +12,7 @@ export function formatFacingContext(view: CaptureViewDoc | undefined): string {
   return s;
 }
 
-/** Pan/tilt bounds so the model does not recommend impossible aim commands. */
-export function formatPanTiltLimitsForPrompt(station: StationDoc | undefined): string {
-  const pt = station?.capabilities?.panTilt;
-  if (!pt) {
-    return "Mount limits unknown; assume logical elevation (deg above horizon) is often about -10 to +90 unless the station documents otherwise.";
-  }
-  return `Mount limits (logical degrees): pan [${pt.panMin}, ${pt.panMax}], tilt/elevation above horizon [${pt.tiltMin}, ${pt.tiltMax}]. Only recommend aim within these ranges.`;
+/** Fixed camera — model should not assume actionable pan/tilt slews. */
+export function formatPanTiltLimitsForPrompt(_station: StationDoc | undefined): string {
+  return "This station uses a fixed camera mount (no pan/tilt). Do not recommend mechanical slew or aim_absolute-style corrections; optional recommended_next_aim is advisory only and is not executed as hardware motion.";
 }

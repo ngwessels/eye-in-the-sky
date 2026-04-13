@@ -1,6 +1,6 @@
 import type { CaptureDoc } from "./types";
 
-/** Elevation above horizon (deg), same semantics as mount tilt / aim_absolute. */
+/** Elevation above horizon (deg), same semantics as mount tilt at capture. */
 export function effectiveElevationDegForAnalysis(
   c: Pick<CaptureDoc, "view" | "mount_tilt_deg">,
 ): number | undefined {

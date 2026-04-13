@@ -137,7 +137,7 @@ export async function getJpegForRealCameraAtIndex(cameraIndex: number): Promise<
 }
 
 /**
- * Used by `test-pan-tilt-capture`: prefers `CAPTURE_STILL_CMD` when set; otherwise `MOCK_CAMERA=1` uses
+ * Manual / diagnostic: prefers `CAPTURE_STILL_CMD` when set; otherwise `MOCK_CAMERA=1` uses
  * the tiny mock JPEG; without either, errors (same as the agent).
  */
 export async function getJpegForUpload(): Promise<Buffer> {

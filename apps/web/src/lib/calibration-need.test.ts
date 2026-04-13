@@ -17,7 +17,6 @@ function baseStation(over: Partial<StationDoc> = {}): StationDoc {
     },
     capabilities: {
       sensors: [],
-      panTilt: { panMin: -180, panMax: 180, tiltMin: -10, tiltMax: 90 },
     },
     calibration: {
       state: "ready",

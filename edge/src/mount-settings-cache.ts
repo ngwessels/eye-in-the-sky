@@ -1,4 +1,4 @@
-/** Tilt trim from cloud (commands poll); replaces PAN_TILT_TILT_OFFSET_DEG in .env. */
+/** Tilt trim from cloud (commands poll); applied to fixed-mount elevation semantics on the server. */
 let mountTiltOffsetDeg = 0;
 
 /** True-north offset: view uses mount_pan + north_offset; aim subtracts it from geographic azimuth. */

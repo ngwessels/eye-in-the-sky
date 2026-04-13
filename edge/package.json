@@ -7,23 +7,15 @@
     "dev": "tsx watch src/index.ts",
     "prebuild": "npm run build -w @eye/shared",
     "build": "tsc",
-    "rebuild:native": "npm rebuild i2c-bus serialport",
     "start": "node start.mjs",
-    "test-pan-tilt": "tsx src/test-pan-tilt.ts",
-    "test-pan-tilt:dist": "node dist/test-pan-tilt.js",
-    "test-pan-tilt-capture": "tsx src/test-pan-tilt-capture.ts",
-    "test-pan-tilt-capture:dist": "node dist/test-pan-tilt-capture.js",
     "test": "node --import tsx/esm --test src/omni-camera-count.test.ts"
   },
   "dependencies": {
     "@eye/shared": "*",
     "dotenv": "^16.4.7",
-    "i2c-bus": "^5.2.3",
-    "serialport": "^13.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "@types/i2c-bus": "^5.1.2",
     "@types/node": "^22.10.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

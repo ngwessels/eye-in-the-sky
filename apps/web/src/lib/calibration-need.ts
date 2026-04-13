@@ -74,11 +74,7 @@ export function buildSkyProbeAim(
     return null;
   }
 
-  const pt = station.capabilities?.panTilt;
-  let el = Math.min(opts.targetElMax, Math.max(opts.targetElMin, sun_elevation_deg));
-  if (pt) {
-    el = Math.min(pt.tiltMax, Math.max(pt.tiltMin, el));
-  }
+  const el = Math.min(opts.targetElMax, Math.max(opts.targetElMin, sun_elevation_deg));
 
   return { azimuthDeg: sun_azimuth_true_deg, elevationDeg: el };
 }

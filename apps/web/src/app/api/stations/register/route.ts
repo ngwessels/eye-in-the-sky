@@ -44,7 +44,6 @@ export async function POST(request: Request) {
     },
     capabilities: {
       sensors: [],
-      panTilt: { panMin: -180, panMax: 180, tiltMin: -10, tiltMax: 90 },
       ...(body.omni_quad === true ? { omni_quad: true } : {}),
     },
     calibration: {
