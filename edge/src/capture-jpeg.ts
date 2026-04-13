@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { config } from "./config.js";
 import { MOCK_JPEG } from "./camera-mock.js";
 import { postDebugIngest } from "./debug-ingest.js";
+import { log } from "./logger.js";
 
 const execFileAsync = promisify(execFile) as (
   file: string,
@@ -15,11 +16,15 @@ const CAPTURE_CLI_HINT =
   "(then try `rpicam-still` or `libcamera-still`; on older OS use `raspistill` from libraspberrypi-bin). " +
   "Check: command -v rpicam-still libcamera-still raspistill";
 
-/** Default `run_calibration` still when no `CALIBRATION_CAPTURE_STILL_CMD*` override (avoids full-res AF timeouts). */
+/**
+ * Default `run_calibration` still when no `CALIBRATION_CAPTURE_STILL_CMD*` override.
+ * Uses `--immediate` + 720p to minimize ISP/AF load (1080p AF still timed out on some 64MP + Pi setups).
+ * For sharper calibration frames set `CALIBRATION_CAPTURE_STILL_CMD` (e.g. 1080p/4K + AF).
+ */
 const DEFAULT_CALIBRATION_STILL_CMD =
-  "rpicam-still -e jpg -n -t 5000 --autofocus-on-capture --width 1920 --height 1080 -o -";
+  "rpicam-still -e jpg -n --immediate --width 1280 --height 720 -o -";
 const DEFAULT_CALIBRATION_STILL_CMD_TEMPLATE =
-  "rpicam-still -e jpg -n -t 5000 --autofocus-on-capture --camera {{INDEX}} --width 1920 --height 1080 -o -";
+  "rpicam-still -e jpg -n --immediate --camera {{INDEX}} --width 1280 --height 720 -o -";
 
 function calibrationMatchCaptureStillCmd(): boolean {
   const v = process.env.CALIBRATION_MATCH_CAPTURE_STILL_CMD?.trim().toLowerCase();
@@ -34,9 +39,9 @@ function maybeWarnImmediateWithoutAf(baseCmd: string) {
   if (/\b--autofocus-on-capture\b/.test(baseCmd) || /\b--autofocus\b/.test(baseCmd)) return;
   warnedAboutImmediateAf = true;
   console.warn(
-    "[edge] CAPTURE_STILL_CMD uses --immediate without --autofocus-on-capture / --autofocus. " +
-      "AF cameras (e.g. Arducam 64MP) often look blurry — remove --immediate, add -t 6000 --autofocus-on-capture, " +
-      "and raise --width/--height. See edge/.env.example.",
+    "[edge] Still command uses --immediate without --autofocus-on-capture / --autofocus. " +
+      "AF cameras (e.g. Arducam 64MP) often look blurry for ops stills — remove --immediate, add -t 6000 --autofocus-on-capture, " +
+      "and raise --width/--height for CAPTURE_STILL_CMD. Calibration defaults stay light unless you set CALIBRATION_CAPTURE_STILL_CMD.",
   );
 }
 
@@ -98,8 +103,8 @@ function rewriteCameraCliError(stderr: string, errMessage: string): Error | null
   return new Error(
     "Camera pipeline timeout (libcamera): the sensor did not deliver frames in time. " +
       "Reseat the ribbon/cable, verify power, or use a lighter mode: lower --width/--height, shorter -t, " +
-      "or set CALIBRATION_CAPTURE_STILL_CMD / CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE for run_calibration only; " +
-      "defaults are conservative (see edge/.env.example). CALIBRATION_MATCH_CAPTURE_STILL_CMD=1 uses the same command as ops." +
+      "or set CALIBRATION_CAPTURE_STILL_CMD / CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE for run_calibration; " +
+      "built-in default is 720p --immediate (see edge/.env.example). CALIBRATION_MATCH_CAPTURE_STILL_CMD=1 uses the same command as ops." +
       (tail ? `\n--- stderr (tail) ---\n${tail}` : ""),
   );
 }
@@ -198,6 +203,12 @@ export async function getJpegForCalibrationStill(): Promise<Buffer> {
     data: { source, usesCalibrationEnv: Boolean(cal), matchCapture, timeoutMs },
   });
   // #endregion
+  log.info("calibration still (single) invoking shell", {
+    source,
+    matchCapture,
+    timeoutMs,
+    shellCmdPreview: cmd.length > 220 ? `${cmd.slice(0, 220)}…` : cmd,
+  });
   return jpegFromShell(cmd, timeoutMs);
 }
 
@@ -267,6 +278,13 @@ export async function getJpegForCalibrationStillAtIndex(cameraIndex: number): Pr
   if (!cmd) {
     throw new Error("Omni calibration template produced an empty command after substitution");
   }
+  log.info("calibration still (omni) invoking shell", {
+    cameraIndex,
+    source,
+    matchCapture,
+    timeoutMs,
+    shellCmdPreview: cmd.length > 220 ? `${cmd.slice(0, 220)}…` : cmd,
+  });
   return jpegFromShell(cmd, timeoutMs);
 }
 
