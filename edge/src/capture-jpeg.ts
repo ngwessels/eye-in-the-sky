@@ -14,6 +14,17 @@ const CAPTURE_CLI_HINT =
   "(then try `rpicam-still` or `libcamera-still`; on older OS use `raspistill` from libraspberrypi-bin). " +
   "Check: command -v rpicam-still libcamera-still raspistill";
 
+/** Default `run_calibration` still when no `CALIBRATION_CAPTURE_STILL_CMD*` override (avoids full-res AF timeouts). */
+const DEFAULT_CALIBRATION_STILL_CMD =
+  "rpicam-still -e jpg -n -t 5000 --autofocus-on-capture --width 1920 --height 1080 -o -";
+const DEFAULT_CALIBRATION_STILL_CMD_TEMPLATE =
+  "rpicam-still -e jpg -n -t 5000 --autofocus-on-capture --camera {{INDEX}} --width 1920 --height 1080 -o -";
+
+function calibrationMatchCaptureStillCmd(): boolean {
+  const v = process.env.CALIBRATION_MATCH_CAPTURE_STILL_CMD?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 let warnedAboutImmediateAf = false;
 
 function maybeWarnImmediateWithoutAf(baseCmd: string) {
@@ -86,8 +97,8 @@ function rewriteCameraCliError(stderr: string, errMessage: string): Error | null
   return new Error(
     "Camera pipeline timeout (libcamera): the sensor did not deliver frames in time. " +
       "Reseat the ribbon/cable, verify power, or use a lighter mode: lower --width/--height, shorter -t, " +
-      "or set CALIBRATION_CAPTURE_STILL_CMD / CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE for run_calibration only " +
-      "(see edge/.env.example)." +
+      "or set CALIBRATION_CAPTURE_STILL_CMD / CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE for run_calibration only; " +
+      "defaults are conservative (see edge/.env.example). CALIBRATION_MATCH_CAPTURE_STILL_CMD=1 uses the same command as ops." +
       (tail ? `\n--- stderr (tail) ---\n${tail}` : ""),
   );
 }
@@ -149,12 +160,35 @@ export async function getJpegForRealCamera(): Promise<Buffer> {
 }
 
 /**
- * `run_calibration` stills only: prefers `CALIBRATION_CAPTURE_STILL_CMD` when set; otherwise same shell as
- * `getJpegForRealCamera`. Timeout from `CALIBRATION_CAPTURE_TIMEOUT_MS` (default 120s).
+ * `run_calibration` stills only: `CALIBRATION_CAPTURE_STILL_CMD` when set; else conservative built-in default
+ * (not necessarily the same as `CAPTURE_STILL_CMD`). Set `CALIBRATION_MATCH_CAPTURE_STILL_CMD=1` to use ops command.
+ * Timeout from `CALIBRATION_CAPTURE_TIMEOUT_MS` (default 120s).
  */
 export async function getJpegForCalibrationStill(): Promise<Buffer> {
   const timeoutMs = parseCalibrationCaptureTimeoutMs();
   const cal = process.env.CALIBRATION_CAPTURE_STILL_CMD?.trim();
+  const matchCapture = calibrationMatchCaptureStillCmd();
+  let source: "env" | "match_capture" | "default";
+  let cmd: string;
+  if (cal) {
+    source = "env";
+    cmd = buildCaptureShellCommand(cal);
+    if (!cmd) {
+      throw new Error("CALIBRATION_CAPTURE_STILL_CMD is empty after trim");
+    }
+  } else if (matchCapture) {
+    source = "match_capture";
+    cmd = buildDefaultCaptureShellCommand();
+    if (!cmd) {
+      throw new Error(
+        "CALIBRATION_MATCH_CAPTURE_STILL_CMD=1 but CAPTURE_STILL_CMD is empty — set CAPTURE_STILL_CMD or " +
+          "CALIBRATION_CAPTURE_STILL_CMD",
+      );
+    }
+  } else {
+    source = "default";
+    cmd = buildCaptureShellCommand(DEFAULT_CALIBRATION_STILL_CMD);
+  }
   // #region agent log
   fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
     method: "POST",
@@ -164,26 +198,11 @@ export async function getJpegForCalibrationStill(): Promise<Buffer> {
       location: "capture-jpeg.ts:getJpegForCalibrationStill",
       message: "calibration_still_single",
       hypothesisId: "H_cal_cmd",
-      data: { usesCalibrationEnv: Boolean(cal), timeoutMs },
+      data: { source, usesCalibrationEnv: Boolean(cal), matchCapture, timeoutMs },
       timestamp: Date.now(),
     }),
   }).catch(() => {});
   // #endregion
-  if (cal) {
-    const cmd = buildCaptureShellCommand(cal);
-    if (!cmd) {
-      throw new Error("CALIBRATION_CAPTURE_STILL_CMD is empty after trim");
-    }
-    return jpegFromShell(cmd, timeoutMs);
-  }
-  const cmd = buildDefaultCaptureShellCommand();
-  if (!cmd) {
-    throw new Error(
-      "Set CAPTURE_STILL_CMD in edge/.env — shell command that writes JPEG to stdout " +
-        "(or set MOCK_CAMERA=1 for a tiny test JPEG only). " +
-        "Example: rpicam-still -e jpg -n --immediate --width 1280 --height 720 -o -",
-    );
-  }
   return jpegFromShell(cmd, timeoutMs);
 }
 
@@ -208,16 +227,26 @@ export async function getJpegForRealCameraAtIndex(cameraIndex: number): Promise<
 }
 
 /**
- * Omni calibration: uses `CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE` when set (must include `{{INDEX}}`);
- * otherwise `CAPTURE_STILL_CMD_TEMPLATE`. Timeout from `CALIBRATION_CAPTURE_TIMEOUT_MS`.
+ * Omni calibration: `CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE` when set; else conservative built-in default
+ * (not necessarily `CAPTURE_STILL_CMD_TEMPLATE`). `CALIBRATION_MATCH_CAPTURE_STILL_CMD=1` uses ops template.
+ * Timeout from `CALIBRATION_CAPTURE_TIMEOUT_MS`.
  */
 export async function getJpegForCalibrationStillAtIndex(cameraIndex: number): Promise<Buffer> {
   const timeoutMs = parseCalibrationCaptureTimeoutMs();
   const calTpl = process.env.CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE?.trim() ?? "";
-  const tpl =
-    calTpl && calTpl.includes("{{INDEX}}")
-      ? calTpl
-      : (process.env.CAPTURE_STILL_CMD_TEMPLATE?.trim() ?? "");
+  const matchCapture = calibrationMatchCaptureStillCmd();
+  let tpl: string;
+  let source: "env" | "match_capture" | "default";
+  if (calTpl && calTpl.includes("{{INDEX}}")) {
+    source = "env";
+    tpl = calTpl;
+  } else if (matchCapture) {
+    source = "match_capture";
+    tpl = process.env.CAPTURE_STILL_CMD_TEMPLATE?.trim() ?? "";
+  } else {
+    source = "default";
+    tpl = DEFAULT_CALIBRATION_STILL_CMD_TEMPLATE;
+  }
   // #region agent log
   fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
     method: "POST",
@@ -229,7 +258,9 @@ export async function getJpegForCalibrationStillAtIndex(cameraIndex: number): Pr
       hypothesisId: "H_cal_cmd",
       data: {
         cameraIndex,
+        source,
         usesCalibrationTemplate: Boolean(calTpl && calTpl.includes("{{INDEX}}")),
+        matchCapture,
         timeoutMs,
       },
       timestamp: Date.now(),
@@ -238,8 +269,8 @@ export async function getJpegForCalibrationStillAtIndex(cameraIndex: number): Pr
   // #endregion
   if (!tpl || !tpl.includes("{{INDEX}}")) {
     throw new Error(
-      "Set CAPTURE_STILL_CMD_TEMPLATE with literal {{INDEX}} for omni capture, e.g. " +
-        "`rpicam-still -e jpg -n --immediate --camera {{INDEX}} --width 1920 --height 1080 -o -`",
+      "Omni calibration needs CAPTURE_STILL_CMD_TEMPLATE with {{INDEX}} when CALIBRATION_MATCH_CAPTURE_STILL_CMD=1, " +
+        "or set CALIBRATION_CAPTURE_STILL_CMD_TEMPLATE, or rely on the built-in default template.",
     );
   }
   const substituted = tpl.replaceAll("{{INDEX}}", String(cameraIndex));
