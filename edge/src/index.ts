@@ -217,7 +217,43 @@ async function handleCommand(cmd: Command) {
         break;
       }
       case "run_calibration":
+        log.info("run_calibration command accepted", {
+          commandId: cmd.commandId,
+          trace_id: cmd.trace_id ?? null,
+          omniQuad: config.omniQuad,
+        });
+        // #region agent log
+        fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
+          body: JSON.stringify({
+            sessionId: "5044f5",
+            location: "index.ts:run_calibration",
+            message: "run_calibration_enter",
+            hypothesisId: "H1",
+            data: { commandId: cmd.commandId, omniQuad: config.omniQuad },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
         await runCalibrationSequence(cmd);
+        log.info("run_calibration sequence finished, sending ack", {
+          commandId: cmd.commandId,
+        });
+        // #region agent log
+        fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
+          body: JSON.stringify({
+            sessionId: "5044f5",
+            location: "index.ts:run_calibration",
+            message: "run_calibration_success_before_ack",
+            hypothesisId: "H1",
+            data: { commandId: cmd.commandId },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
         await ack(cmd.commandId, true, { pose: nominalMountPose() });
         break;
       default:
@@ -225,6 +261,29 @@ async function handleCommand(cmd: Command) {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    if (cmd.type === "run_calibration") {
+      log.error("run_calibration failed", {
+        commandId: cmd.commandId,
+        trace_id: cmd.trace_id ?? null,
+        error: msg,
+        stackSnippet: stack?.split("\n").slice(0, 6).join(" | "),
+      });
+      // #region agent log
+      fetch("http://127.0.0.1:7932/ingest/c5819765-bc3d-4bb6-91da-21204e2311a3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5044f5" },
+        body: JSON.stringify({
+          sessionId: "5044f5",
+          location: "index.ts:handleCommand:catch",
+          message: "run_calibration_throw",
+          hypothesisId: "H1",
+          data: { commandId: cmd.commandId, error: msg },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+    }
     await ack(cmd.commandId, false, undefined, msg);
   }
 }
