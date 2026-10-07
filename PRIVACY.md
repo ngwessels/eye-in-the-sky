@@ -2,7 +2,7 @@
 
 ## Field of view
 
-Sky cameras can capture horizon features, buildings, aircraft, and occasionally people or vehicles. Operators should:
+Sky cameras can capture horizon features, buildings, aircraft, and occasionally people or vehicles. The meteorological **all-sky** build ([docs/hardware.md](./docs/hardware.md)) looks **up** and still records a **full horizon ring**. Operators should:
 
 - Aim primarily at the **sky** and minimize private property in frame.
 - Document approximate **field of view** and **retention** for their deployment.

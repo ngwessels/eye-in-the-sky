@@ -255,6 +255,8 @@ For a **fixed** set of cameras (typically four, 90° apart on the horizon), the 
 ## Related docs
 
 - [README.md](./README.md) — monorepo overview and cloud setup  
+- [docs/hardware.md](./docs/hardware.md) — meteorological all-sky (zenith ~180° fisheye) parts list and outdoor build  
+- [docs/capture.md](./docs/capture.md) — HDR stills, un-warp, sidecar JSON, upload path  
 - [PRIVACY.md](./PRIVACY.md) — camera field of view and retention  
 - [SECURITY.md](./SECURITY.md) — API keys and reporting issues  
 - [edge/.env.example](./edge/.env.example) — all edge environment variables  

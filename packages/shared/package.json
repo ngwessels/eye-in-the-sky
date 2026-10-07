@@ -13,12 +13,15 @@
   },
   "scripts": {
     "build": "tsc",
-    "lint": "echo noop"
+    "lint": "echo noop",
+    "test": "tsx --test src/all-sky.test.ts"
   },
   "dependencies": {
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }
